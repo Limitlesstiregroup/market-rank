@@ -1,0 +1,26 @@
+{
+  "users": [
+    {
+      "id": "usr_r0ferqwx",
+      "email": "a@b.com",
+      "passwordHash": "805bd951772627f3d1a607084df1727c6caad60447c5d73febf7be2d2fe17fd8",
+      "createdAt": "2026-02-28T01:16:03.544Z",
+      "trustScore": 45
+    }
+  ],
+  "predictions": [
+    {
+      "id": "pred_ret75jgz",
+      "userId": "usr_r0ferqwx",
+      "ticker": "AAPL",
+      "direction": "bull",
+      "targetPrice": 250,
+      "horizonDate": "2026-12-31",
+      "confidence": 0.7,
+      "createdAt": "2026-02-28T01:16:03.550Z",
+      "status": "open",
+      "flagged": false
+    }
+  ],
+  "moderation": []
+}

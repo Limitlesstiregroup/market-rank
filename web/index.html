@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MarketRank</title>
+    <style>
+      body{font-family:Inter,system-ui;margin:0;background:#0b1020;color:#eaf0ff}
+      .wrap{max-width:980px;margin:0 auto;padding:18px}
+      .card{background:#151c33;border:1px solid #2b3760;border-radius:14px;padding:14px;margin:12px 0}
+      .row{display:flex;gap:10px;flex-wrap:wrap}
+      input,select,button{padding:10px;border-radius:8px;border:1px solid #2b3760;background:#0f1730;color:#eaf0ff}
+      button{background:#2f7dff;border:none;font-weight:700;cursor:pointer}
+      .score{font-weight:800}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>MarketRank</h1>
+      <p>Ad-free stock community with credibility scoring.</p>
+      <div class="card">
+        <h3>Register / Login</h3>
+        <div class="row">
+          <input id="email" placeholder="Email" />
+          <input id="password" type="password" placeholder="Password" />
+          <button onclick="register()">Register</button>
+          <button onclick="login()">Login</button>
+        </div>
+        <p id="auth"></p>
+      </div>
+      <div class="card">
+        <h3>Prediction</h3>
+        <div class="row">
+          <input id="ticker" placeholder="Ticker (AAPL)" />
+          <select id="direction"><option value="bull">Bull</option><option value="bear">Bear</option></select>
+          <input id="target" type="number" placeholder="Target Price" />
+          <input id="horizon" type="date" />
+          <input id="confidence" type="number" step="0.01" min="0" max="1" value="0.7" />
+          <button onclick="postPrediction()">Post</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Leaderboard (0-100)</h3>
+        <div id="board">Loading...</div>
+      </div>
+    </div>
+    <script>
+      let token = null;
+      async function register(){
+        const r=await fetch('/api/auth/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
+        auth.textContent = r.ok ? 'Registered. Now login.' : 'Register failed';
+      }
+      async function login(){
+        const r=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
+        const j=await r.json();
+        if(r.ok){token=j.token;auth.textContent='Logged in';}
+        else auth.textContent='Login failed';
+      }
+      async function postPrediction(){
+        if(!token) return alert('Login first');
+        await fetch('/api/predictions',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({ticker:ticker.value,direction:direction.value,targetPrice:Number(target.value),horizonDate:horizon.value,confidence:Number(confidence.value)})});
+        await loadBoard();
+      }
+      async function loadBoard(){
+        const r=await fetch('/api/leaderboard');
+        const j=await r.json();
+        board.innerHTML=(j.leaderboard||[]).map((u,i)=>`<div>#${i+1} ${u.email} — <span class='score'>${u.trustScore}</span></div>`).join('')||'No users yet';
+      }
+      loadBoard();
+    </script>
+  </body>
+</html>

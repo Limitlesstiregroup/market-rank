@@ -1,0 +1,11 @@
+{
+  "name": "market-rank",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ad-free stock social network with credibility scoring",
+  "scripts": {
+    "build": "node scripts/build-check.js",
+    "test": "node scripts/scoring-test.js && node scripts/smoke-test.js",
+    "lint": "node scripts/lint-check.js"
+  }
+}
