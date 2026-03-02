@@ -64,6 +64,7 @@ Key values:
 - `scripts/scoring-test.js` - score/sybil unit checks
 - `scripts/smoke-test.js` - e2e core flow checks
 - `scripts/api-validation-test.js` - input validation + payload limits
+- `scripts/openapi-contract-test.js` - OpenAPI route/response contract validation against live server
 
 ## Production-readiness TODO (next step)
 
@@ -71,7 +72,7 @@ Key values:
 2. Add proper session persistence (Redis/JWT + rotation)
 3. Add observability (structured logs, metrics, tracing)
 4. Add CI security checks (dependency + SAST)
-5. Add API docs (OpenAPI) and typed client
+5. Add typed API client generated from OpenAPI contract
 6. Add full moderation dashboard
 
 ## Security notes

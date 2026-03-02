@@ -1,0 +1,175 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MarketRank API",
+    "version": "0.2.0",
+    "description": "Ad-free stock social network API with credibility scoring and moderation controls"
+  },
+  "servers": [
+    { "url": "http://localhost:4510" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "moderatorKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-moderator-key"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        },
+        "required": ["error"]
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": {
+          "200": { "description": "Healthy" }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "summary": "Operational metrics",
+        "security": [{ "moderatorKey": [] }],
+        "responses": {
+          "200": { "description": "Metrics payload" },
+          "403": { "description": "Moderator key required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "summary": "Create user account",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Account created" },
+          "400": { "description": "Invalid input" },
+          "409": { "description": "Email exists" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "minLength": 8 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Logged in" },
+          "400": { "description": "Invalid credentials format" },
+          "401": { "description": "Invalid credentials" },
+          "403": { "description": "Account banned" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout session",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Session revoked" },
+          "401": { "description": "Auth required" }
+        }
+      }
+    },
+    "/api/predictions": {
+      "post": {
+        "summary": "Submit prediction",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": { "description": "Prediction created" },
+          "400": { "description": "Invalid prediction" },
+          "401": { "description": "Auth required" },
+          "403": { "description": "Account banned" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    },
+    "/api/moderation/flag": {
+      "post": {
+        "summary": "Flag prediction",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": { "description": "Flag created" },
+          "400": { "description": "Invalid request" },
+          "401": { "description": "Auth required" },
+          "404": { "description": "Prediction not found" },
+          "409": { "description": "Already flagged" }
+        }
+      }
+    },
+    "/api/moderation/ban": {
+      "post": {
+        "summary": "Ban user",
+        "security": [{ "moderatorKey": [] }],
+        "responses": {
+          "201": { "description": "Ban created" },
+          "400": { "description": "Invalid request" },
+          "403": { "description": "Moderator key required" },
+          "404": { "description": "Target user not found" }
+        }
+      }
+    },
+    "/api/moderation/appeal": {
+      "post": {
+        "summary": "Appeal ban",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "201": { "description": "Appeal opened" },
+          "400": { "description": "Invalid request" },
+          "401": { "description": "Auth required" },
+          "404": { "description": "Ban not found" },
+          "409": { "description": "Appeal already open" }
+        }
+      }
+    },
+    "/api/leaderboard": {
+      "get": {
+        "summary": "Get leaderboard",
+        "responses": {
+          "200": { "description": "Leaderboard payload" }
+        }
+      }
+    }
+  }
+}

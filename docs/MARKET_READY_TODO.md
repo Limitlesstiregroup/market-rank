@@ -26,6 +26,6 @@
 - [ ] Replace JSON file store with Postgres and migrations
 - [ ] Add password reset + email verification flow
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
-- [ ] Add OpenAPI spec and contract tests
+- [x] Add OpenAPI spec and contract tests
 - [ ] Add admin moderation dashboard UI
 - [ ] Add E2E browser tests (Playwright/Cypress)
