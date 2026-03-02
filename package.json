@@ -6,6 +6,9 @@
   "scripts": {
     "build": "node scripts/build-check.js",
     "test": "node scripts/scoring-test.js && node scripts/smoke-test.js && node scripts/api-validation-test.js && node scripts/openapi-contract-test.js",
-    "lint": "node scripts/lint-check.js"
+    "lint": "node scripts/lint-check.js",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:sast": "node scripts/security-sast-check.js",
+    "security": "npm run security:audit && npm run security:sast"
   }
 }

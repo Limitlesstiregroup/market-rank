@@ -25,6 +25,9 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      - name: Security checks
+        run: npm run security
+
       - name: Test
         run: npm run test
 

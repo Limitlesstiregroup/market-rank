@@ -71,7 +71,7 @@ Key values:
 1. Replace JSON store with Postgres + migrations
 2. Add proper session persistence (Redis/JWT + rotation)
 3. Add observability (structured logs, metrics, tracing)
-4. Add CI security checks (dependency + SAST)
+4. ✅ Add CI security checks (dependency audit + lightweight SAST)
 5. Add typed API client generated from OpenAPI contract
 6. Add full moderation dashboard
 
