@@ -52,7 +52,8 @@ Key values:
 - `GET /api/health`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
-- `POST /api/predictions` (Bearer token)
+- `POST /api/auth/logout` (Bearer token)
+- `POST /api/predictions` (Bearer token, future horizon date required)
 - `POST /api/moderation/flag` (Bearer token)
 - `POST /api/moderation/ban` (`x-moderator-key` header)
 - `POST /api/moderation/appeal` (Bearer token)

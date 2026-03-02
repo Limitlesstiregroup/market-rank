@@ -22,6 +22,7 @@ function setSecurityHeaders(res) {
   res.setHeader('x-frame-options', 'DENY');
   res.setHeader('referrer-policy', 'no-referrer');
   res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('content-security-policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:;");
   res.setHeader('access-control-allow-origin', ALLOWED_ORIGIN);
   res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
   res.setHeader('access-control-allow-headers', 'content-type,authorization,x-moderator-key,x-device-fingerprint');
@@ -44,6 +45,11 @@ function isTicker(v) {
 function isIsoDate(v) {
   const ms = Date.parse(String(v || ''));
   return Number.isFinite(ms);
+}
+
+function isFutureDate(v) {
+  const ms = Date.parse(String(v || ''));
+  return Number.isFinite(ms) && ms > Date.now();
 }
 
 function sanitizeText(v, max = 500) {
@@ -233,6 +239,14 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (req.method === 'POST' && u.pathname === '/api/auth/logout') {
+    const auth = String(req.headers.authorization || '');
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (!token || !sessions.has(token)) return json(res, 401, { error: 'auth required' });
+    sessions.delete(token);
+    return json(res, 200, { ok: true });
+  }
+
   if (req.method === 'POST' && u.pathname === '/api/predictions') {
     const user = userFromReq(req, store);
     if (!user) return json(res, 401, { error: 'auth required' });
@@ -261,7 +275,7 @@ const server = http.createServer(async (req, res) => {
     const targetPrice = Number(b?.targetPrice);
     const confidence = Number(b?.confidence ?? 0.5);
     const horizonDate = String(b?.horizonDate || '');
-    if (!isTicker(ticker) || !['bull', 'bear'].includes(dir) || !Number.isFinite(targetPrice) || targetPrice <= 0 || !isIsoDate(horizonDate) || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+    if (!isTicker(ticker) || !['bull', 'bear'].includes(dir) || !Number.isFinite(targetPrice) || targetPrice <= 0 || !isIsoDate(horizonDate) || !isFutureDate(horizonDate) || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
       return json(res, 400, { error: 'invalid prediction' });
     }
 

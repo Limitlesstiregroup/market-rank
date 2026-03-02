@@ -54,12 +54,27 @@ async function run() {
     }, { authorization: `Bearer ${loginJson.token}` });
     assert.equal(badPrediction.status, 400);
 
+    const pastDatePrediction = await post('http://127.0.0.1:4521/api/predictions', {
+      ticker: 'AAPL', direction: 'bull', targetPrice: 150, horizonDate: '2020-01-01', confidence: 0.6
+    }, { authorization: `Bearer ${loginJson.token}` });
+    assert.equal(pastDatePrediction.status, 400);
+
     const bigPayload = await fetch('http://127.0.0.1:4521/api/moderation/appeal', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${loginJson.token}` },
       body: JSON.stringify({ banId: 'ban_x', message: 'x'.repeat(50_000) })
     });
     assert.ok([400, 413].includes(bigPayload.status));
+
+    const logout = await post('http://127.0.0.1:4521/api/auth/logout', {}, {
+      authorization: `Bearer ${loginJson.token}`
+    });
+    assert.equal(logout.status, 200);
+
+    const afterLogout = await post('http://127.0.0.1:4521/api/predictions', {
+      ticker: 'AAPL', direction: 'bull', targetPrice: 220, horizonDate: '2030-01-01', confidence: 0.7
+    }, { authorization: `Bearer ${loginJson.token}` });
+    assert.equal(afterLogout.status, 401);
 
     console.log('market-rank api validation test passed');
   } finally {
