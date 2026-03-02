@@ -4,170 +4,194 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MarketRank — Credibility-first stock predictions</title>
-    <meta name="description" content="MarketRank is an ad-free stock prediction community with credibility scoring, moderation signals, and transparent leaderboards." />
+    <meta name="description" content="MarketRank is an ad-free stock prediction community with credibility scoring, anti-abuse controls, and transparent trust signals." />
+    <meta name="robots" content="index,follow" />
     <style>
-      :root{--bg:#0b1020;--panel:#151c33;--line:#2b3760;--text:#eaf0ff;--muted:#9cb0e8;--brand:#2f7dff;--danger:#ff5d5d}
+      :root{--bg:#090f1f;--bg2:#101935;--card:#141f3f;--text:#e9efff;--muted:#a7b6dd;--accent:#4d8dff;--ok:#45c26b;--warn:#ffb64d;--bad:#ff6b6b;--line:#2d3f75}
       *{box-sizing:border-box}
-      body{font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#0b1020,#090d1a);color:var(--text)}
-      .wrap{max-width:1040px;margin:0 auto;padding:16px}
-      .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
-      .row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
-      .row > *{width:100%}
-      input,select,button{padding:10px;border-radius:10px;border:1px solid var(--line);background:#0f1730;color:var(--text)}
-      input:focus,select:focus,button:focus{outline:2px solid #6ea2ff;outline-offset:1px}
-      button{background:var(--brand);border:none;font-weight:700;cursor:pointer}
-      button[disabled]{opacity:.6;cursor:not-allowed}
+      body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text)}
+      .wrap{max-width:1080px;margin:0 auto;padding:20px}
+      .hero h1{margin:0 0 6px;font-size:clamp(1.5rem,2.8vw,2.25rem)}
+      .hero p{margin:0;color:var(--muted)}
+      .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:14px}
+      .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+      .card h2{font-size:1.05rem;margin:0 0 10px}
+      .row{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+      .field{display:flex;flex-direction:column;gap:6px}
+      label{font-size:.9rem;color:var(--muted)}
+      input,select,button{padding:10px;border-radius:10px;border:1px solid var(--line);background:#0c1430;color:var(--text)}
+      button{background:linear-gradient(180deg,#5c97ff,#3a78e6);border:none;font-weight:700;cursor:pointer}
+      button.secondary{background:#23345f}
+      button:disabled{opacity:.6;cursor:not-allowed}
+      .actions{display:flex;gap:8px;flex-wrap:wrap}
+      .status{margin-top:10px;font-size:.92rem;color:var(--muted)}
+      .status.ok{color:var(--ok)}
+      .status.err{color:var(--bad)}
+      .leader{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #20335f}
+      .leader:last-child{border-bottom:none}
       .score{font-weight:800}
-      .muted{color:var(--muted);font-size:14px}
-      .status{min-height:24px}
-      .error{color:var(--danger)}
-      .ok{color:#69d39b}
-      .leader-item{padding:10px 0;border-bottom:1px solid #21305a}
-      .leader-item:last-child{border-bottom:none}
-      @media (max-width:900px){.row{grid-template-columns:1fr 1fr}}
-      @media (max-width:560px){.row{grid-template-columns:1fr}}
+      .pill{font-size:.78rem;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+      .loading{color:var(--warn)}
+      @media (max-width:640px){.wrap{padding:14px}}
     </style>
   </head>
   <body>
     <main class="wrap">
-      <h1>MarketRank</h1>
-      <p class="muted">Ad-free stock community with credibility scoring and anti-sybil defenses.</p>
-
-      <section class="card" aria-labelledby="auth-title">
-        <h2 id="auth-title">Register / Login</h2>
-        <div class="row">
-          <input id="email" type="email" autocomplete="email" placeholder="Email" aria-label="Email" />
-          <input id="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" />
-          <button id="registerBtn" onclick="register()">Register</button>
-          <button id="loginBtn" onclick="login()">Login</button>
-        </div>
-        <p id="auth" class="status muted" role="status" aria-live="polite"></p>
+      <section class="hero" aria-label="Introduction">
+        <h1>MarketRank</h1>
+        <p>Ad-free stock predictions with transparent credibility scoring.</p>
       </section>
 
-      <section class="card" aria-labelledby="pred-title">
-        <h2 id="pred-title">Post Prediction</h2>
-        <div class="row">
-          <input id="ticker" placeholder="Ticker (AAPL)" aria-label="Ticker" maxlength="8" />
-          <select id="direction" aria-label="Direction"><option value="bull">Bull</option><option value="bear">Bear</option></select>
-          <input id="target" type="number" min="0.01" step="0.01" placeholder="Target Price" aria-label="Target Price" />
-          <input id="horizon" type="date" aria-label="Horizon Date" />
-          <input id="confidence" type="number" step="0.01" min="0" max="1" value="0.7" aria-label="Confidence" />
-          <button id="postBtn" onclick="postPrediction()">Post</button>
-        </div>
-        <p id="predStatus" class="status muted" role="status" aria-live="polite"></p>
+      <section class="grid" aria-label="Core app panels">
+        <article class="card" aria-labelledby="auth-title">
+          <h2 id="auth-title">Account</h2>
+          <div class="row">
+            <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" placeholder="name@example.com" /></div>
+            <div class="field"><label for="password">Password</label><input id="password" type="password" minlength="8" autocomplete="current-password" placeholder="At least 8 characters" /></div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button id="registerBtn" onclick="register()">Register</button>
+            <button id="loginBtn" class="secondary" onclick="login()">Login</button>
+          </div>
+          <p id="auth" class="status" role="status" aria-live="polite"></p>
+        </article>
+
+        <article class="card" aria-labelledby="pred-title">
+          <h2 id="pred-title">Post prediction</h2>
+          <div class="row">
+            <div class="field"><label for="ticker">Ticker</label><input id="ticker" maxlength="8" placeholder="AAPL" /></div>
+            <div class="field"><label for="direction">Direction</label><select id="direction"><option value="bull">Bull</option><option value="bear">Bear</option></select></div>
+            <div class="field"><label for="target">Target price</label><input id="target" type="number" min="0.01" step="0.01" placeholder="250" /></div>
+            <div class="field"><label for="horizon">Horizon date</label><input id="horizon" type="date" /></div>
+            <div class="field"><label for="confidence">Confidence (0-1)</label><input id="confidence" type="number" step="0.01" min="0" max="1" value="0.7" /></div>
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button id="postBtn" onclick="postPrediction()">Post prediction</button>
+          </div>
+          <p id="predStatus" class="status" role="status" aria-live="polite"></p>
+        </article>
       </section>
 
-      <section class="card" aria-labelledby="leader-title">
-        <h2 id="leader-title">Leaderboard (0-100)</h2>
-        <p class="muted">Higher score means better historical performance and trust signals.</p>
-        <div id="board" role="region" aria-live="polite">Loading...</div>
+      <section class="card" aria-labelledby="leaderboard-title" style="margin-top:14px">
+        <h2 id="leaderboard-title">Leaderboard <span class="pill">0–100 trust</span></h2>
+        <div id="board" role="status" aria-live="polite" class="loading">Loading leaderboard...</div>
       </section>
     </main>
+
     <script>
       let token = null;
-      const $ = (id) => document.getElementById(id);
 
-      function setLoading(buttonId, isLoading, text='Working...') {
-        const btn = $(buttonId);
-        if (!btn) return;
-        btn.disabled = isLoading;
-        btn.dataset.original = btn.dataset.original || btn.textContent;
-        btn.textContent = isLoading ? text : btn.dataset.original;
-      }
-
-      function setStatus(id, message, ok=true) {
-        const el = $(id);
+      function setStatus(el, message, mode = '') {
+        el.className = `status ${mode}`.trim();
         el.textContent = message;
-        el.className = `status ${ok ? 'ok' : 'error'}`;
       }
 
-      function validPredictionInput() {
-        const ticker = $('ticker').value.trim().toUpperCase();
-        const target = Number($('target').value);
-        const confidence = Number($('confidence').value);
-        if (!/^[A-Z]{1,8}$/.test(ticker)) return 'Ticker must be 1-8 letters';
-        if (!Number.isFinite(target) || target <= 0) return 'Target price must be greater than 0';
-        if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return 'Confidence must be between 0 and 1';
-        if (!$('horizon').value) return 'Please choose a horizon date';
-        return null;
-      }
+      function isEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim()); }
 
       async function api(path, options = {}) {
-        const response = await fetch(path, options);
-        const data = await response.json().catch(() => ({}));
-        return { response, data };
+        const res = await fetch(path, options);
+        let data = null;
+        try { data = await res.json(); } catch (_) { data = null; }
+        if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+        return data;
       }
 
-      async function register(){
-        setLoading('registerBtn', true, 'Registering...');
+      async function register() {
+        const registerBtn = document.getElementById('registerBtn');
+        const auth = document.getElementById('auth');
+        const email = document.getElementById('email').value.trim().toLowerCase();
+        const password = document.getElementById('password').value;
+
+        if (!isEmail(email)) return setStatus(auth, 'Please enter a valid email.', 'err');
+        if (password.length < 8) return setStatus(auth, 'Password must be at least 8 characters.', 'err');
+
+        registerBtn.disabled = true;
+        setStatus(auth, 'Creating your account...', '');
         try {
-          const { response, data } = await api('/api/auth/register', {
-            method:'POST',
-            headers:{'content-type':'application/json'},
-            body:JSON.stringify({email:$('email').value,password:$('password').value})
-          });
-          if (response.ok) setStatus('auth', 'Registered. Now login.');
-          else setStatus('auth', data.error || 'Register failed', false);
-        } catch {
-          setStatus('auth', 'Network error while registering', false);
+          await api('/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+          setStatus(auth, 'Registered successfully. You can now log in.', 'ok');
+        } catch (e) {
+          setStatus(auth, e.message, 'err');
         } finally {
-          setLoading('registerBtn', false);
+          registerBtn.disabled = false;
         }
       }
 
-      async function login(){
-        setLoading('loginBtn', true, 'Logging in...');
+      async function login() {
+        const loginBtn = document.getElementById('loginBtn');
+        const auth = document.getElementById('auth');
+        const email = document.getElementById('email').value.trim().toLowerCase();
+        const password = document.getElementById('password').value;
+
+        loginBtn.disabled = true;
+        setStatus(auth, 'Signing in...', '');
         try {
-          const { response, data } = await api('/api/auth/login', {
-            method:'POST',
-            headers:{'content-type':'application/json'},
-            body:JSON.stringify({email:$('email').value,password:$('password').value})
-          });
-          if(response.ok){ token=data.token; setStatus('auth','Logged in successfully.'); }
-          else setStatus('auth', data.error || 'Login failed', false);
-        } catch {
-          setStatus('auth', 'Network error while logging in', false);
+          const data = await api('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) });
+          token = data.token;
+          setStatus(auth, `Logged in. Trust score: ${data.user.trustScore}`, 'ok');
+        } catch (e) {
+          token = null;
+          setStatus(auth, e.message, 'err');
         } finally {
-          setLoading('loginBtn', false);
+          loginBtn.disabled = false;
         }
       }
 
-      async function postPrediction(){
-        if(!token) return setStatus('predStatus', 'Login first', false);
-        const validationError = validPredictionInput();
-        if (validationError) return setStatus('predStatus', validationError, false);
+      async function postPrediction() {
+        const postBtn = document.getElementById('postBtn');
+        const predStatus = document.getElementById('predStatus');
+        const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+        const direction = document.getElementById('direction').value;
+        const targetPrice = Number(document.getElementById('target').value);
+        const horizonDate = document.getElementById('horizon').value;
+        const confidence = Number(document.getElementById('confidence').value);
 
-        setLoading('postBtn', true, 'Posting...');
+        if (!token) return setStatus(predStatus, 'Please log in first.', 'err');
+        if (!/^[A-Z]{1,8}$/.test(ticker)) return setStatus(predStatus, 'Ticker must be 1–8 letters.', 'err');
+        if (!Number.isFinite(targetPrice) || targetPrice <= 0) return setStatus(predStatus, 'Target price must be positive.', 'err');
+        if (!horizonDate) return setStatus(predStatus, 'Please choose a horizon date.', 'err');
+        if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return setStatus(predStatus, 'Confidence must be between 0 and 1.', 'err');
+
+        postBtn.disabled = true;
+        setStatus(predStatus, 'Posting prediction...', '');
         try {
-          const { response, data } = await api('/api/predictions', {
-            method:'POST',
-            headers:{'content-type':'application/json',authorization:'Bearer '+token},
-            body:JSON.stringify({
-              ticker:$('ticker').value,
-              direction:$('direction').value,
-              targetPrice:Number($('target').value),
-              horizonDate:$('horizon').value,
-              confidence:Number($('confidence').value)
-            })
+          const data = await api('/api/predictions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+            body: JSON.stringify({ ticker, direction, targetPrice, horizonDate, confidence })
           });
-          if (!response.ok) return setStatus('predStatus', data.error || 'Prediction failed', false);
-          setStatus('predStatus', 'Prediction posted.');
+          setStatus(predStatus, `Prediction posted. Trust score: ${data.trustScore}`, 'ok');
           await loadBoard();
-        } catch {
-          setStatus('predStatus', 'Network error while posting prediction', false);
+        } catch (e) {
+          setStatus(predStatus, e.message, 'err');
         } finally {
-          setLoading('postBtn', false);
+          postBtn.disabled = false;
         }
       }
 
-      async function loadBoard(){
-        const { response, data } = await api('/api/leaderboard');
-        if (!response.ok) {
-          $('board').textContent = 'Could not load leaderboard.';
-          return;
+      async function loadBoard() {
+        const board = document.getElementById('board');
+        board.className = 'loading';
+        board.textContent = 'Loading leaderboard...';
+        try {
+          const data = await api('/api/leaderboard');
+          const users = data.leaderboard || [];
+          if (!users.length) {
+            board.className = '';
+            board.textContent = 'No users yet. Create an account to get started.';
+            return;
+          }
+          board.className = '';
+          board.innerHTML = users.map((u, i) => `
+            <div class="leader">
+              <div>#${i + 1} ${u.email}</div>
+              <div><span class="score">${u.trustScore}</span> · Sybil risk ${u.sybilRisk}% · ${u.predictionCount} preds</div>
+            </div>
+          `).join('');
+        } catch (e) {
+          board.className = 'status err';
+          board.textContent = e.message;
         }
-        const rows = (data.leaderboard||[]).map((u,i)=>`<div class='leader-item'>#${i+1} ${u.email} — <span class='score'>${u.trustScore}</span> <span class='muted'>(Sybil risk: ${u.sybilRisk})</span></div>`).join('');
-        $('board').innerHTML = rows || 'No users yet';
       }
 
       loadBoard();

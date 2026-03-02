@@ -5,7 +5,7 @@
   "description": "Ad-free stock social network with credibility scoring",
   "scripts": {
     "build": "node scripts/build-check.js",
-    "test": "node scripts/scoring-test.js && node scripts/smoke-test.js",
+    "test": "node scripts/scoring-test.js && node scripts/smoke-test.js && node scripts/api-validation-test.js",
     "lint": "node scripts/lint-check.js"
   }
 }

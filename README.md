@@ -1,30 +1,27 @@
 # MarketRank
 
-Ad-free stock discussion platform with prediction credibility scoring.
+MarketRank is an ad-free stock prediction platform with user credibility scoring, anti-abuse signals, and moderation workflows.
 
-## What this service does
+## What this repo includes
 
-- User registration/login
-- Prediction posting with trust-score updates
-- Moderation workflows (flag, temp/permanent ban, appeal)
-- Leaderboard with trust score and sybil-risk signals
-- Basic anti-abuse rate limits
+- **Backend API** (`backend/server.js`)
+  - Auth: register/login
+  - Prediction posting
+  - Leaderboard with trust score + sybil risk
+  - Moderation: flag, ban, appeal
+  - Basic security hardening headers and request-size limits
+  - Rate limiting by IP and user
+- **Web UI** (`web/index.html`)
+  - Responsive single-page app
+  - Form validation + loading/error states
+  - Accessible status messages (`aria-live`) and semantic markup
+- **Scoring logic** (`backend/scoring.js`)
+  - Trust score composition
+  - Sybil risk signal checks
+- **Worker simulation** (`worker/daily-score.js`)
+- **Schema draft** (`db/schema.sql`)
 
-## Production-readiness TODO (tracked)
-
-- [x] API input validation and payload size limits
-- [x] Security headers + configurable CORS
-- [x] Better frontend UX: loading states + error feedback
-- [x] Responsive layout and accessibility improvements
-- [x] SEO metadata for landing page
-- [x] Tests green (build/lint/test)
-- [ ] Persistent DB (replace JSON file store)
-- [ ] Auth hardening (password hashing upgrade + token expiry/revocation)
-- [ ] Background jobs + queue for score recalculation
-- [ ] Observability (structured logs, metrics, alerting)
-- [ ] E2E/browser tests in CI
-
-## Run locally
+## Quick start
 
 ```bash
 npm install
@@ -35,28 +32,47 @@ npm test
 node backend/server.js
 ```
 
-Open: `http://127.0.0.1:4510`
+Open: `http://localhost:4510`
 
-## Environment configuration
+## Environment variables
 
-Copy `.env.example` to `.env` and adjust:
+See `.env.example`.
 
-- `PORT`: API/web port
-- `STORE_FILE`: path to JSON store (for local/dev)
-- `MODERATOR_KEY`: shared secret for moderator ban endpoint
-- `ALLOWED_ORIGIN`: CORS origin (set exact domain in prod)
-- `MAX_BODY_BYTES`: max JSON request size (default 16KB)
-- `NODE_ENV`: set `production` in prod
+Key values:
 
-## Scripts
+- `PORT` - API/web port
+- `STORE_FILE` - local JSON datastore path (MVP mode)
+- `MODERATOR_KEY` - required for `/api/moderation/ban`
+- `ALLOWED_ORIGIN` - CORS allowlist origin
+- `MAX_BODY_BYTES` - max request body size in bytes
+- `NODE_ENV` - `development` / `test` / `production`
 
-- `npm run build` — static build sanity check
-- `npm run lint` — lint/safety checks
-- `npm test` — scoring + API smoke tests
+## API endpoints
 
-## Services
+- `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/predictions` (Bearer token)
+- `POST /api/moderation/flag` (Bearer token)
+- `POST /api/moderation/ban` (`x-moderator-key` header)
+- `POST /api/moderation/appeal` (Bearer token)
+- `GET /api/leaderboard`
 
-- API: `backend/server.js`
-- Worker: `worker/daily-score.js`
-- Web: `web/index.html`
-- DB schema reference: `db/schema.sql`
+## Test coverage
+
+- `scripts/scoring-test.js` - score/sybil unit checks
+- `scripts/smoke-test.js` - e2e core flow checks
+- `scripts/api-validation-test.js` - input validation + payload limits
+
+## Production-readiness TODO (next step)
+
+1. Replace JSON store with Postgres + migrations
+2. Add proper session persistence (Redis/JWT + rotation)
+3. Add observability (structured logs, metrics, tracing)
+4. Add CI security checks (dependency + SAST)
+5. Add API docs (OpenAPI) and typed client
+6. Add full moderation dashboard
+
+## Security notes
+
+Current implementation is still lightweight and intentionally simple for MVP iteration. It includes baseline controls (rate limit, validation, body-size limits, noframe/nosniff/referrer headers), but should not be treated as enterprise-hardened yet.
