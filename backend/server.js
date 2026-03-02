@@ -473,6 +473,47 @@ const server = http.createServer(async (req, res) => {
     return json(res, 201, { appeal });
   }
 
+  if (req.method === 'GET' && u.pathname === '/api/moderation/dashboard') {
+    if (!requireModerator(req)) return json(res, 403, { error: 'moderator key required' });
+
+    const activeBans = store.moderation
+      .filter((m) => ['temp_ban', 'perm_ban'].includes(m.action) && m.status === 'active')
+      .map((ban) => ({
+        ...ban,
+        targetEmail: store.users.find((uUser) => uUser.id === ban.targetUserId)?.email || null
+      }))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+    const flaggedPredictions = store.predictions
+      .filter((p) => Number(p.flagCount || 0) > 0)
+      .map((prediction) => ({
+        ...prediction,
+        ownerEmail: store.users.find((uUser) => uUser.id === prediction.userId)?.email || null
+      }))
+      .sort((a, b) => Number(b.flagCount || 0) - Number(a.flagCount || 0));
+
+    const openAppeals = store.appeals
+      .filter((a) => a.status === 'open')
+      .map((appeal) => ({
+        ...appeal,
+        userEmail: store.users.find((uUser) => uUser.id === appeal.userId)?.email || null
+      }))
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+
+    return json(res, 200, {
+      summary: {
+        users: store.users.length,
+        predictions: store.predictions.length,
+        flaggedPredictions: flaggedPredictions.length,
+        activeBans: activeBans.length,
+        openAppeals: openAppeals.length
+      },
+      flaggedPredictions: flaggedPredictions.slice(0, 50),
+      activeBans: activeBans.slice(0, 50),
+      openAppeals: openAppeals.slice(0, 50)
+    });
+  }
+
   if (req.method === 'GET' && u.pathname === '/api/leaderboard') {
     for (const user of store.users) {
       const sybil = computeSybilSignals(user.id, store);

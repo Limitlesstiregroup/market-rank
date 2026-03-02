@@ -89,6 +89,16 @@ async function run() {
     assert.ok(metricsJson.requestsTotal >= 1);
     assert.ok(metricsJson.routes['GET /api/metrics']);
 
+    const moderationDashboardDenied = await fetch('http://127.0.0.1:4521/api/moderation/dashboard');
+    assert.equal(moderationDashboardDenied.status, 403);
+
+    const moderationDashboard = await fetch('http://127.0.0.1:4521/api/moderation/dashboard', {
+      headers: { 'x-moderator-key': 'test-mod-key' }
+    });
+    assert.equal(moderationDashboard.status, 200);
+    const moderationJson = await moderationDashboard.json();
+    assert.ok(moderationJson.summary);
+
     const logContents = fs.readFileSync(logFile, 'utf8');
     assert.ok(logContents.includes('"type":"http_request"'));
 

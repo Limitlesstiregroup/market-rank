@@ -36,6 +36,7 @@ async function run() {
     ['/api/moderation/flag', 'post'],
     ['/api/moderation/ban', 'post'],
     ['/api/moderation/appeal', 'post'],
+    ['/api/moderation/dashboard', 'get'],
     ['/api/leaderboard', 'get']
   ];
 
@@ -104,6 +105,11 @@ async function run() {
       message: 'please review'
     }, { authorization: `Bearer ${loginJson.token}` });
     assert.ok(responseDeclared(spec, '/api/moderation/appeal', 'post', appeal.status));
+
+    const moderationDashboard = await fetch('http://127.0.0.1:4521/api/moderation/dashboard', {
+      headers: { 'x-moderator-key': 'test-mod-key' }
+    });
+    assert.ok(responseDeclared(spec, '/api/moderation/dashboard', 'get', moderationDashboard.status));
 
     const logout = await post('http://127.0.0.1:4521/api/auth/logout', {}, {
       authorization: `Bearer ${loginJson.token}`

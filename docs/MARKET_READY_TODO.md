@@ -27,5 +27,5 @@
 - [ ] Add password reset + email verification flow
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [x] Add OpenAPI spec and contract tests
-- [ ] Add admin moderation dashboard UI
+- [x] Add admin moderation dashboard UI
 - [ ] Add E2E browser tests (Playwright/Cypress)

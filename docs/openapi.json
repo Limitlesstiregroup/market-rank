@@ -163,6 +163,16 @@
         }
       }
     },
+    "/api/moderation/dashboard": {
+      "get": {
+        "summary": "Moderator dashboard feed",
+        "security": [{ "moderatorKey": [] }],
+        "responses": {
+          "200": { "description": "Dashboard payload" },
+          "403": { "description": "Moderator key required" }
+        }
+      }
+    },
     "/api/leaderboard": {
       "get": {
         "summary": "Get leaderboard",
