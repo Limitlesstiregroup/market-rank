@@ -13,9 +13,57 @@ const MODERATOR_KEY = process.env.MODERATOR_KEY || 'dev-moderator-key';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'data', 'events.log');
+const ALERT_5XX_THRESHOLD = Math.max(1, Number(process.env.ALERT_5XX_THRESHOLD || 5));
 
 function id(prefix) { return `${prefix}_${Math.random().toString(36).slice(2, 10)}`; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
+
+const metrics = {
+  startedAt: new Date().toISOString(),
+  requestsTotal: 0,
+  requestsByStatusClass: { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
+  requestsByRoute: {},
+  recent5xx: []
+};
+
+function ensureLogDir() {
+  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+}
+
+function logEvent(event) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), ...event });
+  ensureLogDir();
+  fs.appendFileSync(LOG_FILE, `${line}\n`, 'utf8');
+}
+
+function statusClass(statusCode) {
+  if (statusCode >= 500) return '5xx';
+  if (statusCode >= 400) return '4xx';
+  if (statusCode >= 300) return '3xx';
+  return '2xx';
+}
+
+function noteRequestMetric(routeKey, statusCode, durationMs) {
+  metrics.requestsTotal += 1;
+  const cls = statusClass(statusCode);
+  metrics.requestsByStatusClass[cls] += 1;
+  if (!metrics.requestsByRoute[routeKey]) {
+    metrics.requestsByRoute[routeKey] = { count: 0, errors5xx: 0, avgDurationMs: 0 };
+  }
+
+  const routeMetric = metrics.requestsByRoute[routeKey];
+  routeMetric.count += 1;
+  routeMetric.avgDurationMs = Number((((routeMetric.avgDurationMs * (routeMetric.count - 1)) + durationMs) / routeMetric.count).toFixed(2));
+  if (statusCode >= 500) {
+    routeMetric.errors5xx += 1;
+    metrics.recent5xx.push(Date.now());
+    metrics.recent5xx = metrics.recent5xx.filter((t) => Date.now() - t <= 60 * 1000);
+    if (metrics.recent5xx.length >= ALERT_5XX_THRESHOLD) {
+      console.warn(`[alert] high 5xx rate: ${metrics.recent5xx.length} in last 60s`);
+    }
+  }
+}
 
 function setSecurityHeaders(res) {
   res.setHeader('x-content-type-options', 'nosniff');
@@ -138,6 +186,24 @@ function takeRateLimit(store, key, limit, windowMs) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const startedAt = Date.now();
+  const requestId = id('req');
+  const originalEnd = res.end.bind(res);
+  res.end = function patchedEnd(...args) {
+    const durationMs = Date.now() - startedAt;
+    const routeKey = `${req.method} ${new URL(req.url, `http://${req.headers.host}`).pathname}`;
+    noteRequestMetric(routeKey, Number(res.statusCode || 200), durationMs);
+    logEvent({
+      type: 'http_request',
+      requestId,
+      method: req.method,
+      path: new URL(req.url, `http://${req.headers.host}`).pathname,
+      statusCode: Number(res.statusCode || 200),
+      durationMs
+    });
+    return originalEnd(...args);
+  };
+
   try {
     setSecurityHeaders(res);
     if (req.method === 'OPTIONS') {
@@ -156,6 +222,18 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && u.pathname === '/api/health') {
     return json(res, 200, { ok: true, service: 'market-rank-api', users: store.users.length, predictions: store.predictions.length });
+  }
+
+  if (req.method === 'GET' && u.pathname === '/api/metrics') {
+    if (!requireModerator(req)) return json(res, 403, { error: 'moderator key required' });
+    const recent5xxPerMinute = metrics.recent5xx.filter((t) => Date.now() - t <= 60 * 1000).length;
+    return json(res, 200, {
+      startedAt: metrics.startedAt,
+      requestsTotal: metrics.requestsTotal,
+      requestsByStatusClass: metrics.requestsByStatusClass,
+      recent5xxPerMinute,
+      routes: metrics.requestsByRoute
+    });
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/register') {

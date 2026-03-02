@@ -25,7 +25,7 @@
 - [ ] Persistent session store (Redis/JWT with rotation + revoke list)
 - [ ] Replace JSON file store with Postgres and migrations
 - [ ] Add password reset + email verification flow
-- [ ] Add structured logging + metrics + alerting
+- [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [ ] Add OpenAPI spec and contract tests
 - [ ] Add admin moderation dashboard UI
 - [ ] Add E2E browser tests (Playwright/Cypress)

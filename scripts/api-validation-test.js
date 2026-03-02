@@ -17,6 +17,7 @@ async function post(url, body, headers = {}) {
 async function run() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'market-rank-validation-'));
   const storeFile = path.join(tempDir, 'store.json');
+  const logFile = path.join(tempDir, 'events.log');
 
   const child = spawn('node', ['backend/server.js'], {
     cwd: path.join(__dirname, '..'),
@@ -25,7 +26,8 @@ async function run() {
       PORT: '4521',
       STORE_FILE: storeFile,
       MODERATOR_KEY: 'test-mod-key',
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
+      LOG_FILE: logFile
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -75,6 +77,20 @@ async function run() {
       ticker: 'AAPL', direction: 'bull', targetPrice: 220, horizonDate: '2030-01-01', confidence: 0.7
     }, { authorization: `Bearer ${loginJson.token}` });
     assert.equal(afterLogout.status, 401);
+
+    const metricsDenied = await fetch('http://127.0.0.1:4521/api/metrics');
+    assert.equal(metricsDenied.status, 403);
+
+    const metrics = await fetch('http://127.0.0.1:4521/api/metrics', {
+      headers: { 'x-moderator-key': 'test-mod-key' }
+    });
+    assert.equal(metrics.status, 200);
+    const metricsJson = await metrics.json();
+    assert.ok(metricsJson.requestsTotal >= 1);
+    assert.ok(metricsJson.routes['GET /api/metrics']);
+
+    const logContents = fs.readFileSync(logFile, 'utf8');
+    assert.ok(logContents.includes('"type":"http_request"'));
 
     console.log('market-rank api validation test passed');
   } finally {
