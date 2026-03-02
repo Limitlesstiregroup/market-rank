@@ -1,71 +1,175 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>MarketRank</title>
+    <title>MarketRank — Credibility-first stock predictions</title>
+    <meta name="description" content="MarketRank is an ad-free stock prediction community with credibility scoring, moderation signals, and transparent leaderboards." />
     <style>
-      body{font-family:Inter,system-ui;margin:0;background:#0b1020;color:#eaf0ff}
-      .wrap{max-width:980px;margin:0 auto;padding:18px}
-      .card{background:#151c33;border:1px solid #2b3760;border-radius:14px;padding:14px;margin:12px 0}
-      .row{display:flex;gap:10px;flex-wrap:wrap}
-      input,select,button{padding:10px;border-radius:8px;border:1px solid #2b3760;background:#0f1730;color:#eaf0ff}
-      button{background:#2f7dff;border:none;font-weight:700;cursor:pointer}
+      :root{--bg:#0b1020;--panel:#151c33;--line:#2b3760;--text:#eaf0ff;--muted:#9cb0e8;--brand:#2f7dff;--danger:#ff5d5d}
+      *{box-sizing:border-box}
+      body{font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#0b1020,#090d1a);color:var(--text)}
+      .wrap{max-width:1040px;margin:0 auto;padding:16px}
+      .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+      .row{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+      .row > *{width:100%}
+      input,select,button{padding:10px;border-radius:10px;border:1px solid var(--line);background:#0f1730;color:var(--text)}
+      input:focus,select:focus,button:focus{outline:2px solid #6ea2ff;outline-offset:1px}
+      button{background:var(--brand);border:none;font-weight:700;cursor:pointer}
+      button[disabled]{opacity:.6;cursor:not-allowed}
       .score{font-weight:800}
+      .muted{color:var(--muted);font-size:14px}
+      .status{min-height:24px}
+      .error{color:var(--danger)}
+      .ok{color:#69d39b}
+      .leader-item{padding:10px 0;border-bottom:1px solid #21305a}
+      .leader-item:last-child{border-bottom:none}
+      @media (max-width:900px){.row{grid-template-columns:1fr 1fr}}
+      @media (max-width:560px){.row{grid-template-columns:1fr}}
     </style>
   </head>
   <body>
-    <div class="wrap">
+    <main class="wrap">
       <h1>MarketRank</h1>
-      <p>Ad-free stock community with credibility scoring.</p>
-      <div class="card">
-        <h3>Register / Login</h3>
+      <p class="muted">Ad-free stock community with credibility scoring and anti-sybil defenses.</p>
+
+      <section class="card" aria-labelledby="auth-title">
+        <h2 id="auth-title">Register / Login</h2>
         <div class="row">
-          <input id="email" placeholder="Email" />
-          <input id="password" type="password" placeholder="Password" />
-          <button onclick="register()">Register</button>
-          <button onclick="login()">Login</button>
+          <input id="email" type="email" autocomplete="email" placeholder="Email" aria-label="Email" />
+          <input id="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" />
+          <button id="registerBtn" onclick="register()">Register</button>
+          <button id="loginBtn" onclick="login()">Login</button>
         </div>
-        <p id="auth"></p>
-      </div>
-      <div class="card">
-        <h3>Prediction</h3>
+        <p id="auth" class="status muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" aria-labelledby="pred-title">
+        <h2 id="pred-title">Post Prediction</h2>
         <div class="row">
-          <input id="ticker" placeholder="Ticker (AAPL)" />
-          <select id="direction"><option value="bull">Bull</option><option value="bear">Bear</option></select>
-          <input id="target" type="number" placeholder="Target Price" />
-          <input id="horizon" type="date" />
-          <input id="confidence" type="number" step="0.01" min="0" max="1" value="0.7" />
-          <button onclick="postPrediction()">Post</button>
+          <input id="ticker" placeholder="Ticker (AAPL)" aria-label="Ticker" maxlength="8" />
+          <select id="direction" aria-label="Direction"><option value="bull">Bull</option><option value="bear">Bear</option></select>
+          <input id="target" type="number" min="0.01" step="0.01" placeholder="Target Price" aria-label="Target Price" />
+          <input id="horizon" type="date" aria-label="Horizon Date" />
+          <input id="confidence" type="number" step="0.01" min="0" max="1" value="0.7" aria-label="Confidence" />
+          <button id="postBtn" onclick="postPrediction()">Post</button>
         </div>
-      </div>
-      <div class="card">
-        <h3>Leaderboard (0-100)</h3>
-        <div id="board">Loading...</div>
-      </div>
-    </div>
+        <p id="predStatus" class="status muted" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" aria-labelledby="leader-title">
+        <h2 id="leader-title">Leaderboard (0-100)</h2>
+        <p class="muted">Higher score means better historical performance and trust signals.</p>
+        <div id="board" role="region" aria-live="polite">Loading...</div>
+      </section>
+    </main>
     <script>
       let token = null;
+      const $ = (id) => document.getElementById(id);
+
+      function setLoading(buttonId, isLoading, text='Working...') {
+        const btn = $(buttonId);
+        if (!btn) return;
+        btn.disabled = isLoading;
+        btn.dataset.original = btn.dataset.original || btn.textContent;
+        btn.textContent = isLoading ? text : btn.dataset.original;
+      }
+
+      function setStatus(id, message, ok=true) {
+        const el = $(id);
+        el.textContent = message;
+        el.className = `status ${ok ? 'ok' : 'error'}`;
+      }
+
+      function validPredictionInput() {
+        const ticker = $('ticker').value.trim().toUpperCase();
+        const target = Number($('target').value);
+        const confidence = Number($('confidence').value);
+        if (!/^[A-Z]{1,8}$/.test(ticker)) return 'Ticker must be 1-8 letters';
+        if (!Number.isFinite(target) || target <= 0) return 'Target price must be greater than 0';
+        if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return 'Confidence must be between 0 and 1';
+        if (!$('horizon').value) return 'Please choose a horizon date';
+        return null;
+      }
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, options);
+        const data = await response.json().catch(() => ({}));
+        return { response, data };
+      }
+
       async function register(){
-        const r=await fetch('/api/auth/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
-        auth.textContent = r.ok ? 'Registered. Now login.' : 'Register failed';
+        setLoading('registerBtn', true, 'Registering...');
+        try {
+          const { response, data } = await api('/api/auth/register', {
+            method:'POST',
+            headers:{'content-type':'application/json'},
+            body:JSON.stringify({email:$('email').value,password:$('password').value})
+          });
+          if (response.ok) setStatus('auth', 'Registered. Now login.');
+          else setStatus('auth', data.error || 'Register failed', false);
+        } catch {
+          setStatus('auth', 'Network error while registering', false);
+        } finally {
+          setLoading('registerBtn', false);
+        }
       }
+
       async function login(){
-        const r=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});
-        const j=await r.json();
-        if(r.ok){token=j.token;auth.textContent='Logged in';}
-        else auth.textContent='Login failed';
+        setLoading('loginBtn', true, 'Logging in...');
+        try {
+          const { response, data } = await api('/api/auth/login', {
+            method:'POST',
+            headers:{'content-type':'application/json'},
+            body:JSON.stringify({email:$('email').value,password:$('password').value})
+          });
+          if(response.ok){ token=data.token; setStatus('auth','Logged in successfully.'); }
+          else setStatus('auth', data.error || 'Login failed', false);
+        } catch {
+          setStatus('auth', 'Network error while logging in', false);
+        } finally {
+          setLoading('loginBtn', false);
+        }
       }
+
       async function postPrediction(){
-        if(!token) return alert('Login first');
-        await fetch('/api/predictions',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify({ticker:ticker.value,direction:direction.value,targetPrice:Number(target.value),horizonDate:horizon.value,confidence:Number(confidence.value)})});
-        await loadBoard();
+        if(!token) return setStatus('predStatus', 'Login first', false);
+        const validationError = validPredictionInput();
+        if (validationError) return setStatus('predStatus', validationError, false);
+
+        setLoading('postBtn', true, 'Posting...');
+        try {
+          const { response, data } = await api('/api/predictions', {
+            method:'POST',
+            headers:{'content-type':'application/json',authorization:'Bearer '+token},
+            body:JSON.stringify({
+              ticker:$('ticker').value,
+              direction:$('direction').value,
+              targetPrice:Number($('target').value),
+              horizonDate:$('horizon').value,
+              confidence:Number($('confidence').value)
+            })
+          });
+          if (!response.ok) return setStatus('predStatus', data.error || 'Prediction failed', false);
+          setStatus('predStatus', 'Prediction posted.');
+          await loadBoard();
+        } catch {
+          setStatus('predStatus', 'Network error while posting prediction', false);
+        } finally {
+          setLoading('postBtn', false);
+        }
       }
+
       async function loadBoard(){
-        const r=await fetch('/api/leaderboard');
-        const j=await r.json();
-        board.innerHTML=(j.leaderboard||[]).map((u,i)=>`<div>#${i+1} ${u.email} — <span class='score'>${u.trustScore}</span></div>`).join('')||'No users yet';
+        const { response, data } = await api('/api/leaderboard');
+        if (!response.ok) {
+          $('board').textContent = 'Could not load leaderboard.';
+          return;
+        }
+        const rows = (data.leaderboard||[]).map((u,i)=>`<div class='leader-item'>#${i+1} ${u.email} — <span class='score'>${u.trustScore}</span> <span class='muted'>(Sybil risk: ${u.sybilRisk})</span></div>`).join('');
+        $('board').innerHTML = rows || 'No users yet';
       }
+
       loadBoard();
     </script>
   </body>

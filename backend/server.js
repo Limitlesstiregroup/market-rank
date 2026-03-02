@@ -10,19 +10,59 @@ const port = Number(process.env.PORT || 4510);
 const sessions = new Map();
 const WEB_FILE = path.join(__dirname, '..', 'web', 'index.html');
 const MODERATOR_KEY = process.env.MODERATOR_KEY || 'dev-moderator-key';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 
 function id(prefix) { return `${prefix}_${Math.random().toString(36).slice(2, 10)}`; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
 
+function setSecurityHeaders(res) {
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'DENY');
+  res.setHeader('referrer-policy', 'no-referrer');
+  res.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('access-control-allow-origin', ALLOWED_ORIGIN);
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type,authorization,x-moderator-key,x-device-fingerprint');
+}
+
 function json(res, status, data) {
+  setSecurityHeaders(res);
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(data, null, 2));
+}
+
+function isEmail(v) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
+}
+
+function isTicker(v) {
+  return /^[A-Z]{1,8}$/.test(String(v || '').trim().toUpperCase());
+}
+
+function isIsoDate(v) {
+  const ms = Date.parse(String(v || ''));
+  return Number.isFinite(ms);
+}
+
+function sanitizeText(v, max = 500) {
+  return String(v || '').replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, max);
 }
 
 function body(req) {
   return new Promise((resolve, reject) => {
     let d = '';
-    req.on('data', (c) => (d += c));
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('payload_too_large'));
+        req.destroy();
+        return;
+      }
+      d += c;
+    });
     req.on('end', () => {
       if (!d) return resolve({});
       try { resolve(JSON.parse(d)); } catch (e) { reject(e); }
@@ -91,14 +131,21 @@ function takeRateLimit(store, key, limit, windowMs) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const u = new URL(req.url, `http://${req.headers.host}`);
+  try {
+    setSecurityHeaders(res);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
 
-  if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/index.html')) {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    return res.end(fs.readFileSync(WEB_FILE, 'utf8'));
-  }
+    const u = new URL(req.url, `http://${req.headers.host}`);
 
-  const store = loadStore();
+    if (req.method === 'GET' && (u.pathname === '/' || u.pathname === '/index.html')) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(fs.readFileSync(WEB_FILE, 'utf8'));
+    }
+
+    const store = loadStore();
 
   if (req.method === 'GET' && u.pathname === '/api/health') {
     return json(res, 200, { ok: true, service: 'market-rank-api', users: store.users.length, predictions: store.predictions.length });
@@ -113,7 +160,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const b = await body(req).catch(() => null);
-    if (!b?.email || !b?.password || String(b.password).length < 8) return json(res, 400, { error: 'invalid input' });
+    if (!b?.email || !b?.password || String(b.password).length < 8 || !isEmail(b.email)) return json(res, 400, { error: 'invalid input' });
     const email = String(b.email).toLowerCase().trim();
     if (store.users.some((uUser) => uUser.email === email)) return json(res, 409, { error: 'email exists' });
 
@@ -157,6 +204,7 @@ const server = http.createServer(async (req, res) => {
 
     const b = await body(req).catch(() => null);
     const email = String(b?.email || '').toLowerCase().trim();
+    if (!isEmail(email) || String(b?.password || '').length < 8) return json(res, 400, { error: 'invalid credentials format' });
     const user = store.users.find((x) => x.email === email && x.passwordHash === hash(b?.password || ''));
     if (!user) return json(res, 401, { error: 'invalid credentials' });
 
@@ -208,16 +256,22 @@ const server = http.createServer(async (req, res) => {
 
     const b = await body(req).catch(() => null);
     const dir = String(b?.direction || '');
-    if (!b?.ticker || !['bull', 'bear'].includes(dir) || !b?.targetPrice || !b?.horizonDate) return json(res, 400, { error: 'invalid prediction' });
+    const ticker = String(b?.ticker || '').toUpperCase().trim();
+    const targetPrice = Number(b?.targetPrice);
+    const confidence = Number(b?.confidence ?? 0.5);
+    const horizonDate = String(b?.horizonDate || '');
+    if (!isTicker(ticker) || !['bull', 'bear'].includes(dir) || !Number.isFinite(targetPrice) || targetPrice <= 0 || !isIsoDate(horizonDate) || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+      return json(res, 400, { error: 'invalid prediction' });
+    }
 
     const pred = {
       id: id('pred'),
       userId: user.id,
-      ticker: String(b.ticker).toUpperCase().trim(),
+      ticker,
       direction: dir,
-      targetPrice: Number(b.targetPrice),
-      horizonDate: String(b.horizonDate),
-      confidence: Number(b.confidence || 0.5),
+      targetPrice,
+      horizonDate,
+      confidence,
       createdAt: new Date().toISOString(),
       status: 'open',
       flagged: false,
@@ -238,6 +292,8 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 401, { error: 'auth required' });
     const b = await body(req).catch(() => null);
     if (!b?.predictionId || !b?.reason) return json(res, 400, { error: 'invalid flag request' });
+    const reason = sanitizeText(b.reason, 500);
+    if (!reason) return json(res, 400, { error: 'invalid flag reason' });
 
     const prediction = store.predictions.find((p) => p.id === b.predictionId);
     if (!prediction) return json(res, 404, { error: 'prediction not found' });
@@ -251,7 +307,7 @@ const server = http.createServer(async (req, res) => {
       actorUserId: user.id,
       targetUserId: prediction.userId,
       predictionId: prediction.id,
-      reason: String(b.reason).slice(0, 500),
+      reason,
       status: 'active',
       createdAt: new Date().toISOString()
     };
@@ -271,19 +327,21 @@ const server = http.createServer(async (req, res) => {
     if (!requireModerator(req)) return json(res, 403, { error: 'moderator key required' });
     const b = await body(req).catch(() => null);
     if (!b?.targetUserId || !b?.reason) return json(res, 400, { error: 'invalid ban request' });
+    const reason = sanitizeText(b.reason, 500);
+    if (!reason) return json(res, 400, { error: 'invalid ban reason' });
 
     const targetUser = store.users.find((uUser) => uUser.id === b.targetUserId);
     if (!targetUser) return json(res, 404, { error: 'target user not found' });
 
     const isPermanent = Boolean(b.permanent);
-    const durationHours = Number(b.durationHours || 24);
+    const durationHours = Math.max(1, Math.min(24 * 30, Number(b.durationHours || 24)));
     const now = Date.now();
     const event = {
       id: id('mod'),
       action: isPermanent ? 'perm_ban' : 'temp_ban',
       actorUserId: 'moderator',
       targetUserId: targetUser.id,
-      reason: String(b.reason).slice(0, 500),
+      reason,
       status: 'active',
       createdAt: new Date(now).toISOString(),
       expiresAt: isPermanent ? null : new Date(now + (durationHours * 60 * 60 * 1000)).toISOString()
@@ -300,6 +358,8 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 401, { error: 'auth required' });
     const b = await body(req).catch(() => null);
     if (!b?.banId || !b?.message) return json(res, 400, { error: 'invalid appeal request' });
+    const message = sanitizeText(b.message, 2000);
+    if (!message) return json(res, 400, { error: 'invalid appeal message' });
 
     const ban = store.moderation.find((m) => m.id === b.banId && m.targetUserId === user.id && ['temp_ban', 'perm_ban'].includes(m.action));
     if (!ban) return json(res, 404, { error: 'ban not found' });
@@ -311,7 +371,7 @@ const server = http.createServer(async (req, res) => {
       id: id('apl'),
       banId: ban.id,
       userId: user.id,
-      message: String(b.message).slice(0, 2000),
+      message,
       status: 'open',
       createdAt: new Date().toISOString()
     };
@@ -343,7 +403,16 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { leaderboard, updatedAt: new Date().toISOString(), schedule: 'daily at 8:00 PM EST' });
   }
 
-  json(res, 404, { error: 'not found' });
+    json(res, 404, { error: 'not found' });
+  } catch (error) {
+    if (!res.headersSent) {
+      if (String(error.message).includes('payload_too_large')) {
+        return json(res, 413, { error: 'payload too large' });
+      }
+      const details = NODE_ENV === 'development' ? { details: String(error.message || error) } : {};
+      return json(res, 500, { error: 'internal server error', ...details });
+    }
+  }
 });
 
 server.listen(port, () => console.log(`market-rank api running on http://localhost:${port}`));
