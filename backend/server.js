@@ -20,6 +20,12 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'data', 'events.log');
 const ALERT_5XX_THRESHOLD = Math.max(1, Number(process.env.ALERT_5XX_THRESHOLD || 5));
 const MAX_SESSIONS_PER_USER = Math.max(1, Number(process.env.MAX_SESSIONS_PER_USER || 5));
+const REDIS_URL = String(process.env.REDIS_URL || '').trim();
+const REDIS_SESSION_PREFIX = String(process.env.REDIS_SESSION_PREFIX || 'market-rank').trim() || 'market-rank';
+const REDIS_ENABLED = Boolean(REDIS_URL);
+
+let redisClient = null;
+let redisConnectPromise = null;
 
 if (NODE_ENV === 'production' && JWT_SECRET === 'dev-insecure-jwt-secret-change-me') {
   throw new Error('JWT_SECRET must be set to a strong value in production');
@@ -36,6 +42,100 @@ function isRevoked(store, tokenOrJti) {
   if (!tokenOrJti) return false;
   const h = tokenHash(tokenOrJti);
   return store.revokedTokenHashes.includes(h) || store.revokedTokens.includes(tokenOrJti);
+}
+
+async function getRedisClient() {
+  if (!REDIS_ENABLED) return null;
+  if (!redisClient) {
+    // eslint-disable-next-line global-require
+    const { createClient } = require('redis');
+    redisClient = createClient({ url: REDIS_URL });
+    redisClient.on('error', (err) => console.error('[redis] error', err?.message || err));
+  }
+  if (!redisClient.isOpen) {
+    if (!redisConnectPromise) {
+      redisConnectPromise = redisClient.connect().finally(() => {
+        redisConnectPromise = null;
+      });
+    }
+    await redisConnectPromise;
+  }
+  return redisClient;
+}
+
+function redisKey(suffix) {
+  return `${REDIS_SESSION_PREFIX}:${suffix}`;
+}
+
+async function redisIsRevoked(tokenOrJti) {
+  if (!tokenOrJti || !REDIS_ENABLED) return false;
+  const client = await getRedisClient();
+  return Boolean(await client.exists(redisKey(`revoked:${tokenHash(tokenOrJti)}`)));
+}
+
+async function redisRevokeTokenValue(tokenOrJti, ttlSec = SESSION_TTL_HOURS * 60 * 60) {
+  if (!tokenOrJti || !REDIS_ENABLED) return;
+  const client = await getRedisClient();
+  await client.set(redisKey(`revoked:${tokenHash(tokenOrJti)}`), '1', { EX: Math.max(60, ttlSec) });
+}
+
+async function redisStoreSessionRecord(sessionRecord) {
+  if (!REDIS_ENABLED) return;
+  const client = await getRedisClient();
+  const now = Date.now();
+  const expiresAtMs = Date.parse(String(sessionRecord.expiresAt || ''));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) return;
+  const ttlSec = Math.max(1, Math.ceil((expiresAtMs - now) / 1000));
+  const sessionKey = redisKey(`session:${sessionRecord.sid}:${sessionRecord.jti}`);
+  const userSetKey = redisKey(`user-sessions:${sessionRecord.userId}`);
+  await client.set(sessionKey, JSON.stringify(sessionRecord), { EX: ttlSec });
+  await client.zAdd(userSetKey, { score: Date.parse(sessionRecord.createdAt || new Date().toISOString()), value: `${sessionRecord.sid}:${sessionRecord.jti}` });
+  await client.expire(userSetKey, Math.max(ttlSec, SESSION_TTL_HOURS * 60 * 60));
+
+  const count = await client.zCard(userSetKey);
+  const overflow = Math.max(0, count - MAX_SESSIONS_PER_USER);
+  if (overflow > 0) {
+    const stale = await client.zRange(userSetKey, 0, overflow - 1);
+    if (stale.length) {
+      await client.zRem(userSetKey, stale);
+      for (const member of stale) {
+        await client.del(redisKey(`session:${member}`));
+      }
+    }
+  }
+}
+
+async function redisRemoveSessionRecord({ sid, jti }) {
+  if (!REDIS_ENABLED || !sid || !jti) return;
+  const client = await getRedisClient();
+  await client.del(redisKey(`session:${sid}:${jti}`));
+}
+
+async function redisGetSessionRecord({ sid, jti }) {
+  if (!REDIS_ENABLED || !sid || !jti) return null;
+  const client = await getRedisClient();
+  const raw = await client.get(redisKey(`session:${sid}:${jti}`));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function redisListUserSessions(userId) {
+  if (!REDIS_ENABLED || !userId) return [];
+  const client = await getRedisClient();
+  const members = await client.zRange(redisKey(`user-sessions:${userId}`), 0, -1);
+  if (!members.length) return [];
+  const sessions = [];
+  for (const member of members) {
+    const [sid, jti] = String(member).split(':');
+    if (!sid || !jti) continue;
+    const entry = await redisGetSessionRecord({ sid, jti });
+    if (entry) sessions.push(entry);
+  }
+  return sessions;
 }
 
 function revokeTokenValue(store, tokenOrJti) {
@@ -230,7 +330,7 @@ function issueSession(store, userId, now = Date.now()) {
     store.sessions = store.sessions.filter((entry) => !pruneKeys.has(`${entry.sid}:${entry.jti}`));
   }
   store.sessions.push({ sid, jti, userId, createdAt, expiresAt });
-  return { token, expiresAt, sid, jti };
+  return { token, expiresAt, sid, jti, createdAt };
 }
 
 function createOneTimeToken(store, collectionKey, userId, type, ttlMs) {
@@ -254,7 +354,7 @@ function consumeOneTimeToken(store, collectionKey, token) {
   return entry;
 }
 
-function resolveSessionFromReq(req, store, now = Date.now()) {
+async function resolveSessionFromReq(req, store, now = Date.now()) {
   purgeExpiredSessions(store, now);
   const auth = String(req.headers.authorization || '');
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -263,12 +363,21 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
   const payload = verifyToken(token);
   if (payload) {
     if (isRevoked(store, payload.jti) || isRevoked(store, token)) return null;
-    const session = store.sessions.find((entry) => entry.sid === payload.sid && entry.jti === payload.jti && entry.userId === payload.sub);
+    if (await redisIsRevoked(payload.jti) || await redisIsRevoked(token)) return null;
+
+    let session = null;
+    if (REDIS_ENABLED) {
+      session = await redisGetSessionRecord({ sid: payload.sid, jti: payload.jti });
+    }
+    if (!session) {
+      session = store.sessions.find((entry) => entry.sid === payload.sid && entry.jti === payload.jti && entry.userId === payload.sub);
+    }
     if (!session) return null;
 
     const expiresAtMs = Date.parse(String(session.expiresAt || ''));
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) {
       store.sessions = store.sessions.filter((entry) => !(entry.sid === payload.sid && entry.jti === payload.jti));
+      await redisRemoveSessionRecord({ sid: payload.sid, jti: payload.jti });
       return null;
     }
 
@@ -276,7 +385,7 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
   }
 
   // Backward compatibility for legacy random-token sessions.
-  if (isRevoked(store, token)) return null;
+  if (isRevoked(store, token) || await redisIsRevoked(token)) return null;
   const session = store.sessions.find((entry) => entry.token === token);
   if (!session) return null;
   const expiresAtMs = Date.parse(String(session.expiresAt || ''));
@@ -287,8 +396,8 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
   return { token, session, jti: session.jti || null, sid: session.sid || null };
 }
 
-function userFromReq(req, store) {
-  const resolved = resolveSessionFromReq(req, store);
+async function userFromReq(req, store) {
+  const resolved = await resolveSessionFromReq(req, store);
   if (!resolved) return null;
   return store.users.find((u) => u.id === resolved.session.userId) || null;
 }
@@ -452,6 +561,7 @@ const server = http.createServer(async (req, res) => {
     user.sybilSignals = sybil.reasons;
 
     const activeSession = issueSession(store, user.id);
+    await redisStoreSessionRecord({ ...activeSession, userId: user.id });
     await saveStore(store);
     return json(res, 200, {
       token: activeSession.token,
@@ -521,10 +631,14 @@ const server = http.createServer(async (req, res) => {
 
     user.passwordHash = hash(newPassword);
     const revoked = store.sessions.filter((entry) => entry.userId === user.id);
+    const redisRevoked = await redisListUserSessions(user.id);
     store.sessions = store.sessions.filter((entry) => entry.userId !== user.id);
-    for (const sessionEntry of revoked) {
+    for (const sessionEntry of [...revoked, ...redisRevoked]) {
       revokeTokenValue(store, sessionEntry.jti);
       revokeTokenValue(store, sessionEntry.token);
+      await redisRevokeTokenValue(sessionEntry.jti);
+      await redisRevokeTokenValue(sessionEntry.token);
+      await redisRemoveSessionRecord({ sid: sessionEntry.sid, jti: sessionEntry.jti });
     }
     if (store.revokedTokenHashes.length > 5000) store.revokedTokenHashes = store.revokedTokenHashes.slice(-5000);
     if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
@@ -534,7 +648,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/logout') {
-    const resolved = resolveSessionFromReq(req, store);
+    const resolved = await resolveSessionFromReq(req, store);
     if (!resolved) return json(res, 401, { error: 'auth required' });
 
     store.sessions = store.sessions.filter((entry) => {
@@ -543,6 +657,9 @@ const server = http.createServer(async (req, res) => {
     });
     revokeTokenValue(store, resolved.token);
     revokeTokenValue(store, resolved.jti);
+    await redisRevokeTokenValue(resolved.token);
+    await redisRevokeTokenValue(resolved.jti);
+    await redisRemoveSessionRecord({ sid: resolved.sid, jti: resolved.jti });
     if (store.revokedTokenHashes.length > 5000) store.revokedTokenHashes = store.revokedTokenHashes.slice(-5000);
     if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
 
@@ -551,7 +668,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && u.pathname === '/api/predictions') {
-    const user = userFromReq(req, store);
+    const user = await userFromReq(req, store);
     if (!user) return json(res, 401, { error: 'auth required' });
 
     const activeBan = isUserBanned(user, store);
@@ -606,7 +723,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && u.pathname === '/api/moderation/flag') {
-    const user = userFromReq(req, store);
+    const user = await userFromReq(req, store);
     if (!user) return json(res, 401, { error: 'auth required' });
     const b = await body(req).catch(() => null);
     if (!b?.predictionId || !b?.reason) return json(res, 400, { error: 'invalid flag request' });
@@ -672,7 +789,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && u.pathname === '/api/moderation/appeal') {
-    const user = userFromReq(req, store);
+    const user = await userFromReq(req, store);
     if (!user) return json(res, 401, { error: 'auth required' });
     const b = await body(req).catch(() => null);
     if (!b?.banId || !b?.message) return json(res, 400, { error: 'invalid appeal request' });

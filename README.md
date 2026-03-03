@@ -56,6 +56,8 @@ Key values:
 - `JWT_SECRET` - HMAC secret for signed auth tokens (required in production)
 - `JWT_ISSUER` - JWT issuer claim (default `market-rank`)
 - `JWT_AUDIENCE` - JWT audience claim (default `market-rank-api`)
+- `REDIS_URL` - optional Redis connection string for shared session + revocation cache
+- `REDIS_SESSION_PREFIX` - Redis key namespace prefix (default `market-rank`)
 
 ## API endpoints
 
@@ -89,8 +91,8 @@ Current MVP returns verification/reset tokens directly in API responses so local
 ## Production-readiness TODO (next step)
 
 1. Wire real email delivery for verification/reset flows (remove token echo in API responses)
-2. Add dedicated session cache (Redis) for horizontal scale and lower DB churn
-3. Add migration history tracking + rollback scripts (current migration runner is single-file)
+2. Add migration history tracking + rollback scripts (current migration runner is single-file)
+3. Add CI secrets/docs for managed Redis + Postgres failover drills
 
 ## Security notes
 
