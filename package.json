@@ -9,6 +9,7 @@
     "test:e2e": "playwright test",
     "lint": "node scripts/lint-check.js",
     "db:migrate": "node scripts/db-migrate.js",
+    "db:rollback": "node scripts/db-rollback.js",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "security:sast": "node scripts/security-sast-check.js",
     "security": "npm run security:audit && npm run security:sast"

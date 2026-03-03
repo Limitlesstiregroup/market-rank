@@ -25,8 +25,8 @@
 ## Remaining before true production GA
 
 - [x] Move session storage/revocation to Redis for horizontal scale (enabled via `REDIS_URL`, with file/postgres fallback for local dev)
-- [ ] Replace JSON file store with Postgres and migrations
-- [x] Add password reset + email verification flow (token-based MVP endpoints; provider-based email delivery still pending for production)
+- [x] Replace JSON file store with Postgres and migrations (multi-step migration tracking + rollback script)
+- [x] Add password reset + email verification flow (delivery adapter added: stdout/outbox/webhook; token echo can be disabled for production)
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [x] Add OpenAPI spec and contract tests
 - [x] Add admin moderation dashboard UI

@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { URL } = require('url');
 const { loadStore, saveStore } = require('./store');
 const { computeUserScore, computeSybilSignals } = require('./scoring');
+const { deliverAuthTokenEmail, TOKEN_ECHO } = require('./mailer');
 
 const port = Number(process.env.PORT || 4510);
 const WEB_FILE = path.join(__dirname, '..', 'web', 'index.html');
@@ -17,6 +18,7 @@ const MODERATOR_KEY = process.env.MODERATOR_KEY || 'dev-moderator-key';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const APP_BASE_URL = process.env.APP_BASE_URL || ALLOWED_ORIGIN || `http://localhost:${port}`;
 const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'data', 'events.log');
 const ALERT_5XX_THRESHOLD = Math.max(1, Number(process.env.ALERT_5XX_THRESHOLD || 5));
 const MAX_SESSIONS_PER_USER = Math.max(1, Number(process.env.MAX_SESSIONS_PER_USER || 5));
@@ -585,8 +587,17 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 200, { ok: true });
 
     const verify = createOneTimeToken(store, 'emailVerificationTokens', user.id, 'emv', 60 * 60 * 1000);
+    await deliverAuthTokenEmail({
+      type: 'verify-email',
+      to: user.email,
+      token: verify.token,
+      expiresAt: verify.expiresAt,
+      appBaseUrl: APP_BASE_URL
+    });
     await saveStore(store);
-    return json(res, 200, { ok: true, verificationToken: verify.token, expiresAt: verify.expiresAt });
+    return json(res, 200, TOKEN_ECHO
+      ? { ok: true, verificationToken: verify.token, expiresAt: verify.expiresAt }
+      : { ok: true, expiresAt: verify.expiresAt });
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/email/verify/confirm') {
@@ -613,8 +624,17 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 200, { ok: true });
 
     const reset = createOneTimeToken(store, 'passwordResetTokens', user.id, 'pwd', 30 * 60 * 1000);
+    await deliverAuthTokenEmail({
+      type: 'reset-password',
+      to: user.email,
+      token: reset.token,
+      expiresAt: reset.expiresAt,
+      appBaseUrl: APP_BASE_URL
+    });
     await saveStore(store);
-    return json(res, 200, { ok: true, resetToken: reset.token, expiresAt: reset.expiresAt });
+    return json(res, 200, TOKEN_ECHO
+      ? { ok: true, resetToken: reset.token, expiresAt: reset.expiresAt }
+      : { ok: true, expiresAt: reset.expiresAt });
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/password/reset/confirm') {

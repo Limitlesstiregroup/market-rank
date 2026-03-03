@@ -58,6 +58,11 @@ Key values:
 - `JWT_AUDIENCE` - JWT audience claim (default `market-rank-api`)
 - `REDIS_URL` - optional Redis connection string for shared session + revocation cache
 - `REDIS_SESSION_PREFIX` - Redis key namespace prefix (default `market-rank`)
+- `APP_BASE_URL` - absolute app URL included in auth emails
+- `EMAIL_DELIVERY_MODE` - `stdout` (default), `outbox`, or `webhook`
+- `EMAIL_OUTBOX_FILE` - JSONL output path when using `outbox` mode
+- `EMAIL_WEBHOOK_URL` - provider bridge endpoint when using `webhook` mode
+- `EMAIL_TOKEN_ECHO` - if `true`, auth token endpoints include raw tokens in API responses (defaults to `true` outside production)
 
 ## API endpoints
 
@@ -77,7 +82,10 @@ Key values:
 
 ## Auth recovery notes
 
-Current MVP returns verification/reset tokens directly in API responses so local automation and QA can run without an email provider. In production, replace this with an actual mail delivery provider and remove raw token returns.
+Verification/reset requests now route through the delivery adapter (`EMAIL_DELIVERY_MODE`).
+
+- For local QA, keep `EMAIL_TOKEN_ECHO=true` (default outside production).
+- For production, set `EMAIL_TOKEN_ECHO=false` and use `EMAIL_DELIVERY_MODE=webhook` with `EMAIL_WEBHOOK_URL`.
 
 ## Test coverage
 
@@ -90,9 +98,8 @@ Current MVP returns verification/reset tokens directly in API responses so local
 
 ## Production-readiness TODO (next step)
 
-1. Wire real email delivery for verification/reset flows (remove token echo in API responses)
-2. Add migration history tracking + rollback scripts (current migration runner is single-file)
-3. Add CI secrets/docs for managed Redis + Postgres failover drills
+1. Add CI secrets/docs for managed Redis + Postgres failover drills
+2. Add real provider templates + retry/dead-letter handling on the webhook delivery bridge
 
 ## Security notes
 

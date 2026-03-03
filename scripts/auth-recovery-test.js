@@ -20,7 +20,7 @@ async function run() {
 
   const child = spawn('node', ['backend/server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: '4522', STORE_FILE: storeFile, MODERATOR_KEY: 'test-mod-key' },
+    env: { ...process.env, PORT: '4522', STORE_FILE: storeFile, MODERATOR_KEY: 'test-mod-key', EMAIL_TOKEN_ECHO: 'true' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
