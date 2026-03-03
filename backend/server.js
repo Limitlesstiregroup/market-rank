@@ -19,9 +19,30 @@ const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
 const LOG_FILE = process.env.LOG_FILE || path.join(__dirname, 'data', 'events.log');
 const ALERT_5XX_THRESHOLD = Math.max(1, Number(process.env.ALERT_5XX_THRESHOLD || 5));
+const MAX_SESSIONS_PER_USER = Math.max(1, Number(process.env.MAX_SESSIONS_PER_USER || 5));
+
+if (NODE_ENV === 'production' && JWT_SECRET === 'dev-insecure-jwt-secret-change-me') {
+  throw new Error('JWT_SECRET must be set to a strong value in production');
+}
 
 function id(prefix) { return `${prefix}_${Math.random().toString(36).slice(2, 10)}`; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
+
+function tokenHash(value) {
+  return hash(`token:${String(value || '')}`);
+}
+
+function isRevoked(store, tokenOrJti) {
+  if (!tokenOrJti) return false;
+  const h = tokenHash(tokenOrJti);
+  return store.revokedTokenHashes.includes(h) || store.revokedTokens.includes(tokenOrJti);
+}
+
+function revokeTokenValue(store, tokenOrJti) {
+  if (!tokenOrJti) return;
+  const h = tokenHash(tokenOrJti);
+  if (!store.revokedTokenHashes.includes(h)) store.revokedTokenHashes.push(h);
+}
 
 function base64urlEncode(input) {
   return Buffer.from(input).toString('base64url');
@@ -199,7 +220,16 @@ function issueSession(store, userId, now = Date.now()) {
     aud: JWT_AUDIENCE
   };
   const token = signToken(payload);
-  store.sessions.push({ sid, jti, userId, createdAt: new Date(now).toISOString(), expiresAt });
+  const createdAt = new Date(now).toISOString();
+  const userSessions = store.sessions
+    .filter((entry) => entry.userId === userId)
+    .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+  const overflow = Math.max(0, (userSessions.length + 1) - MAX_SESSIONS_PER_USER);
+  if (overflow > 0) {
+    const pruneKeys = new Set(userSessions.slice(0, overflow).map((entry) => `${entry.sid}:${entry.jti}`));
+    store.sessions = store.sessions.filter((entry) => !pruneKeys.has(`${entry.sid}:${entry.jti}`));
+  }
+  store.sessions.push({ sid, jti, userId, createdAt, expiresAt });
   return { token, expiresAt, sid, jti };
 }
 
@@ -232,7 +262,7 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
 
   const payload = verifyToken(token);
   if (payload) {
-    if (store.revokedTokens.includes(payload.jti) || store.revokedTokens.includes(token)) return null;
+    if (isRevoked(store, payload.jti) || isRevoked(store, token)) return null;
     const session = store.sessions.find((entry) => entry.sid === payload.sid && entry.jti === payload.jti && entry.userId === payload.sub);
     if (!session) return null;
 
@@ -246,7 +276,7 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
   }
 
   // Backward compatibility for legacy random-token sessions.
-  if (store.revokedTokens.includes(token)) return null;
+  if (isRevoked(store, token)) return null;
   const session = store.sessions.find((entry) => entry.token === token);
   if (!session) return null;
   const expiresAtMs = Date.parse(String(session.expiresAt || ''));
@@ -493,9 +523,10 @@ const server = http.createServer(async (req, res) => {
     const revoked = store.sessions.filter((entry) => entry.userId === user.id);
     store.sessions = store.sessions.filter((entry) => entry.userId !== user.id);
     for (const sessionEntry of revoked) {
-      if (sessionEntry.jti && !store.revokedTokens.includes(sessionEntry.jti)) store.revokedTokens.push(sessionEntry.jti);
-      if (sessionEntry.token && !store.revokedTokens.includes(sessionEntry.token)) store.revokedTokens.push(sessionEntry.token);
+      revokeTokenValue(store, sessionEntry.jti);
+      revokeTokenValue(store, sessionEntry.token);
     }
+    if (store.revokedTokenHashes.length > 5000) store.revokedTokenHashes = store.revokedTokenHashes.slice(-5000);
     if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
 
     await saveStore(store);
@@ -510,11 +541,10 @@ const server = http.createServer(async (req, res) => {
       if (resolved.sid && resolved.jti) return !(entry.sid === resolved.sid && entry.jti === resolved.jti);
       return entry.token !== resolved.token;
     });
-    if (!store.revokedTokens.includes(resolved.token)) store.revokedTokens.push(resolved.token);
-    if (resolved.jti && !store.revokedTokens.includes(resolved.jti)) store.revokedTokens.push(resolved.jti);
-    if (store.revokedTokens.length > 1000) {
-      store.revokedTokens = store.revokedTokens.slice(-1000);
-    }
+    revokeTokenValue(store, resolved.token);
+    revokeTokenValue(store, resolved.jti);
+    if (store.revokedTokenHashes.length > 5000) store.revokedTokenHashes = store.revokedTokenHashes.slice(-5000);
+    if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
 
     await saveStore(store);
     return json(res, 200, { ok: true });

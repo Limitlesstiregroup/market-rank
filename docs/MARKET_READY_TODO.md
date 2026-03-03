@@ -17,13 +17,14 @@
 
 - [x] Add logout endpoint (`POST /api/auth/logout`) and session invalidation
 - [x] Persist auth sessions in store with TTL and explicit revoke list on logout
+- [x] Harden token revocation with hashed deny-list checks and bounded per-user active sessions
 - [x] Enforce future horizon date for predictions
 - [x] Add CSP header to tighten browser security policy
 - [x] Add tests for logout invalidation + past-date rejection
 
 ## Remaining before true production GA
 
-- [ ] Harden session store to Redis/JWT (baseline file-backed persistent sessions + revoke list is now in place)
+- [ ] Move session storage/revocation to Redis for horizontal scale (JWT + hashed revocation + per-user session cap now in place)
 - [ ] Replace JSON file store with Postgres and migrations
 - [x] Add password reset + email verification flow (token-based MVP endpoints; provider-based email delivery still pending for production)
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
