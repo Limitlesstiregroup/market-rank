@@ -27,6 +27,7 @@
 - [x] Move session storage/revocation to Redis for horizontal scale (enabled via `REDIS_URL`, with file/postgres fallback for local dev)
 - [x] Replace JSON file store with Postgres and migrations (multi-step migration tracking + rollback script)
 - [x] Add password reset + email verification flow (delivery adapter added: stdout/outbox/webhook; token echo can be disabled for production)
+- [x] Harden webhook delivery with retries, timeout, and dead-letter fallback (`EMAIL_DEADLETTER_FILE`)
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [x] Add OpenAPI spec and contract tests
 - [x] Add admin moderation dashboard UI

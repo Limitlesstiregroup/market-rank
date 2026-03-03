@@ -62,6 +62,10 @@ Key values:
 - `EMAIL_DELIVERY_MODE` - `stdout` (default), `outbox`, or `webhook`
 - `EMAIL_OUTBOX_FILE` - JSONL output path when using `outbox` mode
 - `EMAIL_WEBHOOK_URL` - provider bridge endpoint when using `webhook` mode
+- `EMAIL_WEBHOOK_TIMEOUT_MS` - webhook request timeout per attempt (default `5000`)
+- `EMAIL_WEBHOOK_RETRIES` - retry attempts after first failure (default `2`)
+- `EMAIL_WEBHOOK_RETRY_BASE_MS` - exponential backoff base delay in ms (default `500`)
+- `EMAIL_DEADLETTER_FILE` - JSONL fallback file for failed webhook deliveries
 - `EMAIL_TOKEN_ECHO` - if `true`, auth token endpoints include raw tokens in API responses (defaults to `true` outside production)
 
 ## API endpoints
@@ -99,7 +103,7 @@ Verification/reset requests now route through the delivery adapter (`EMAIL_DELIV
 ## Production-readiness TODO (next step)
 
 1. Add CI secrets/docs for managed Redis + Postgres failover drills
-2. Add real provider templates + retry/dead-letter handling on the webhook delivery bridge
+2. Integrate webhook delivery with a live provider (SES/SendGrid/Postmark) and production templates
 
 ## Security notes
 
