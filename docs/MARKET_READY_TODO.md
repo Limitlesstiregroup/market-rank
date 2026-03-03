@@ -25,7 +25,7 @@
 
 - [ ] Harden session store to Redis/JWT (baseline file-backed persistent sessions + revoke list is now in place)
 - [ ] Replace JSON file store with Postgres and migrations
-- [ ] Add password reset + email verification flow
+- [x] Add password reset + email verification flow (token-based MVP endpoints; provider-based email delivery still pending for production)
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [x] Add OpenAPI spec and contract tests
 - [x] Add admin moderation dashboard UI

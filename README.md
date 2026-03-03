@@ -54,17 +54,26 @@ Key values:
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/logout` (Bearer token)
+- `POST /api/auth/email/verify/request`
+- `POST /api/auth/email/verify/confirm`
+- `POST /api/auth/password/reset/request`
+- `POST /api/auth/password/reset/confirm`
 - `POST /api/predictions` (Bearer token, future horizon date required)
 - `POST /api/moderation/flag` (Bearer token)
 - `POST /api/moderation/ban` (`x-moderator-key` header)
 - `POST /api/moderation/appeal` (Bearer token)
 - `GET /api/leaderboard`
 
+## Auth recovery notes
+
+Current MVP returns verification/reset tokens directly in API responses so local automation and QA can run without an email provider. In production, replace this with an actual mail delivery provider and remove raw token returns.
+
 ## Test coverage
 
 - `scripts/scoring-test.js` - score/sybil unit checks
 - `scripts/smoke-test.js` - e2e core flow checks
 - `scripts/api-validation-test.js` - input validation + payload limits
+- `scripts/auth-recovery-test.js` - email verify + password reset flow and session invalidation checks
 - `scripts/openapi-contract-test.js` - OpenAPI route/response contract validation against live server
 
 ## Production-readiness TODO (next step)

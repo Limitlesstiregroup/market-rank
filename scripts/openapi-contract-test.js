@@ -32,6 +32,10 @@ async function run() {
     ['/api/auth/register', 'post'],
     ['/api/auth/login', 'post'],
     ['/api/auth/logout', 'post'],
+    ['/api/auth/email/verify/request', 'post'],
+    ['/api/auth/email/verify/confirm', 'post'],
+    ['/api/auth/password/reset/request', 'post'],
+    ['/api/auth/password/reset/confirm', 'post'],
     ['/api/predictions', 'post'],
     ['/api/moderation/flag', 'post'],
     ['/api/moderation/ban', 'post'],
@@ -75,25 +79,54 @@ async function run() {
     const loginJson = await login.json();
     assert.ok(responseDeclared(spec, '/api/auth/login', 'post', login.status));
 
+    const verifyRequest = await post('http://127.0.0.1:4521/api/auth/email/verify/request', {
+      email: 'contract@test.com'
+    });
+    const verifyRequestJson = await verifyRequest.json();
+    assert.ok(responseDeclared(spec, '/api/auth/email/verify/request', 'post', verifyRequest.status));
+
+    const verifyConfirm = await post('http://127.0.0.1:4521/api/auth/email/verify/confirm', {
+      token: verifyRequestJson.verificationToken
+    });
+    assert.ok(responseDeclared(spec, '/api/auth/email/verify/confirm', 'post', verifyConfirm.status));
+
+    const resetRequest = await post('http://127.0.0.1:4521/api/auth/password/reset/request', {
+      email: 'contract@test.com'
+    });
+    const resetRequestJson = await resetRequest.json();
+    assert.ok(responseDeclared(spec, '/api/auth/password/reset/request', 'post', resetRequest.status));
+
+    const resetConfirm = await post('http://127.0.0.1:4521/api/auth/password/reset/confirm', {
+      token: resetRequestJson.resetToken,
+      newPassword: 'StrongerPass456!'
+    });
+    assert.ok(responseDeclared(spec, '/api/auth/password/reset/confirm', 'post', resetConfirm.status));
+
+    const relogin = await post('http://127.0.0.1:4521/api/auth/login', {
+      email: 'contract@test.com', password: 'StrongerPass456!'
+    }, { 'x-device-fingerprint': 'device-contract' });
+    const reloginJson = await relogin.json();
+    assert.equal(relogin.status, 200);
+
     const badPrediction = await post('http://127.0.0.1:4521/api/predictions', {
       ticker: 'BAD1', direction: 'bull', targetPrice: 0, horizonDate: '2000-01-01', confidence: 5
-    }, { authorization: `Bearer ${loginJson.token}` });
+    }, { authorization: `Bearer ${reloginJson.token}` });
     assert.ok(responseDeclared(spec, '/api/predictions', 'post', badPrediction.status));
 
     const goodPrediction = await post('http://127.0.0.1:4521/api/predictions', {
       ticker: 'MSFT', direction: 'bull', targetPrice: 500, horizonDate: '2027-01-01', confidence: 0.8
-    }, { authorization: `Bearer ${loginJson.token}` });
+    }, { authorization: `Bearer ${reloginJson.token}` });
     const goodPredictionJson = await goodPrediction.json();
     assert.ok(responseDeclared(spec, '/api/predictions', 'post', goodPrediction.status));
 
     const flag = await post('http://127.0.0.1:4521/api/moderation/flag', {
       predictionId: goodPredictionJson.prediction.id,
       reason: 'test flag'
-    }, { authorization: `Bearer ${loginJson.token}` });
+    }, { authorization: `Bearer ${reloginJson.token}` });
     assert.ok(responseDeclared(spec, '/api/moderation/flag', 'post', flag.status));
 
     const ban = await post('http://127.0.0.1:4521/api/moderation/ban', {
-      targetUserId: loginJson.user.id,
+      targetUserId: reloginJson.user.id,
       reason: 'test ban',
       durationHours: 1
     }, { 'x-moderator-key': 'test-mod-key' });
@@ -103,7 +136,7 @@ async function run() {
     const appeal = await post('http://127.0.0.1:4521/api/moderation/appeal', {
       banId: banJson.ban.id,
       message: 'please review'
-    }, { authorization: `Bearer ${loginJson.token}` });
+    }, { authorization: `Bearer ${reloginJson.token}` });
     assert.ok(responseDeclared(spec, '/api/moderation/appeal', 'post', appeal.status));
 
     const moderationDashboard = await fetch('http://127.0.0.1:4521/api/moderation/dashboard', {
@@ -112,7 +145,7 @@ async function run() {
     assert.ok(responseDeclared(spec, '/api/moderation/dashboard', 'get', moderationDashboard.status));
 
     const logout = await post('http://127.0.0.1:4521/api/auth/logout', {}, {
-      authorization: `Bearer ${loginJson.token}`
+      authorization: `Bearer ${reloginJson.token}`
     });
     assert.ok(responseDeclared(spec, '/api/auth/logout', 'post', logout.status));
 

@@ -151,6 +151,27 @@ function issueSession(store, userId, now = Date.now()) {
   return { token, expiresAt };
 }
 
+function createOneTimeToken(store, collectionKey, userId, type, ttlMs) {
+  const token = id(type);
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+  store[collectionKey] = store[collectionKey].filter((entry) => entry.userId !== userId);
+  store[collectionKey].push({ token, userId, createdAt: new Date().toISOString(), expiresAt });
+  return { token, expiresAt };
+}
+
+function consumeOneTimeToken(store, collectionKey, token) {
+  const now = Date.now();
+  store[collectionKey] = store[collectionKey].filter((entry) => {
+    const expiresAt = Date.parse(String(entry.expiresAt || ''));
+    return Number.isFinite(expiresAt) && expiresAt > now;
+  });
+
+  const idx = store[collectionKey].findIndex((entry) => entry.token === token);
+  if (idx < 0) return null;
+  const [entry] = store[collectionKey].splice(idx, 1);
+  return entry;
+}
+
 function resolveSessionFromReq(req, store, now = Date.now()) {
   purgeExpiredSessions(store, now);
   const auth = String(req.headers.authorization || '');
@@ -342,11 +363,76 @@ const server = http.createServer(async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
+        emailVerified: Boolean(user.emailVerified),
         trustScore: user.trustScore,
         sybilRisk: user.sybilRisk,
         sybilSignals: user.sybilSignals
       }
     });
+  }
+
+  if (req.method === 'POST' && u.pathname === '/api/auth/email/verify/request') {
+    const b = await body(req).catch(() => null);
+    const email = String(b?.email || '').toLowerCase().trim();
+    if (!isEmail(email)) return json(res, 400, { error: 'invalid email' });
+    const user = store.users.find((entry) => entry.email === email);
+    if (!user) return json(res, 200, { ok: true });
+
+    const verify = createOneTimeToken(store, 'emailVerificationTokens', user.id, 'emv', 60 * 60 * 1000);
+    saveStore(store);
+    return json(res, 200, { ok: true, verificationToken: verify.token, expiresAt: verify.expiresAt });
+  }
+
+  if (req.method === 'POST' && u.pathname === '/api/auth/email/verify/confirm') {
+    const b = await body(req).catch(() => null);
+    const token = String(b?.token || '').trim();
+    if (!token) return json(res, 400, { error: 'token required' });
+
+    const verify = consumeOneTimeToken(store, 'emailVerificationTokens', token);
+    if (!verify) return json(res, 400, { error: 'invalid or expired token' });
+
+    const user = store.users.find((entry) => entry.id === verify.userId);
+    if (!user) return json(res, 404, { error: 'user not found' });
+
+    user.emailVerified = true;
+    saveStore(store);
+    return json(res, 200, { ok: true, user: { id: user.id, email: user.email, emailVerified: true } });
+  }
+
+  if (req.method === 'POST' && u.pathname === '/api/auth/password/reset/request') {
+    const b = await body(req).catch(() => null);
+    const email = String(b?.email || '').toLowerCase().trim();
+    if (!isEmail(email)) return json(res, 400, { error: 'invalid email' });
+    const user = store.users.find((entry) => entry.email === email);
+    if (!user) return json(res, 200, { ok: true });
+
+    const reset = createOneTimeToken(store, 'passwordResetTokens', user.id, 'pwd', 30 * 60 * 1000);
+    saveStore(store);
+    return json(res, 200, { ok: true, resetToken: reset.token, expiresAt: reset.expiresAt });
+  }
+
+  if (req.method === 'POST' && u.pathname === '/api/auth/password/reset/confirm') {
+    const b = await body(req).catch(() => null);
+    const token = String(b?.token || '').trim();
+    const newPassword = String(b?.newPassword || '');
+    if (!token || newPassword.length < 8) return json(res, 400, { error: 'invalid reset payload' });
+
+    const reset = consumeOneTimeToken(store, 'passwordResetTokens', token);
+    if (!reset) return json(res, 400, { error: 'invalid or expired token' });
+
+    const user = store.users.find((entry) => entry.id === reset.userId);
+    if (!user) return json(res, 404, { error: 'user not found' });
+
+    user.passwordHash = hash(newPassword);
+    const revoked = store.sessions.filter((entry) => entry.userId === user.id).map((entry) => entry.token);
+    store.sessions = store.sessions.filter((entry) => entry.userId !== user.id);
+    for (const tokenValue of revoked) {
+      if (!store.revokedTokens.includes(tokenValue)) store.revokedTokens.push(tokenValue);
+    }
+    if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
+
+    saveStore(store);
+    return json(res, 200, { ok: true });
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/logout') {

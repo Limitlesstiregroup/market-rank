@@ -112,6 +112,44 @@
         }
       }
     },
+    "/api/auth/email/verify/request": {
+      "post": {
+        "summary": "Request email verification token",
+        "responses": {
+          "200": { "description": "Request accepted" },
+          "400": { "description": "Invalid email" }
+        }
+      }
+    },
+    "/api/auth/email/verify/confirm": {
+      "post": {
+        "summary": "Confirm email verification token",
+        "responses": {
+          "200": { "description": "Email verified" },
+          "400": { "description": "Invalid or expired token" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
+    "/api/auth/password/reset/request": {
+      "post": {
+        "summary": "Request password reset token",
+        "responses": {
+          "200": { "description": "Request accepted" },
+          "400": { "description": "Invalid email" }
+        }
+      }
+    },
+    "/api/auth/password/reset/confirm": {
+      "post": {
+        "summary": "Confirm password reset token",
+        "responses": {
+          "200": { "description": "Password updated" },
+          "400": { "description": "Invalid reset payload or token" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
     "/api/predictions": {
       "post": {
         "summary": "Submit prediction",

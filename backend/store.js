@@ -14,6 +14,8 @@ function normalizeStore(store) {
   if (!Array.isArray(normalized.appeals)) normalized.appeals = [];
   if (!Array.isArray(normalized.sessions)) normalized.sessions = [];
   if (!Array.isArray(normalized.revokedTokens)) normalized.revokedTokens = [];
+  if (!Array.isArray(normalized.emailVerificationTokens)) normalized.emailVerificationTokens = [];
+  if (!Array.isArray(normalized.passwordResetTokens)) normalized.passwordResetTokens = [];
   return normalized;
 }
 
