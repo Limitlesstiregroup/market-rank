@@ -4,8 +4,21 @@
   "version": "0.1.0",
   "description": "Ad-free stock social network with credibility scoring",
   "scripts": {
-    "build": "node scripts/build-check.js",
-    "test": "node scripts/scoring-test.js && node scripts/smoke-test.js",
-    "lint": "node scripts/lint-check.js"
+    "build": "node scripts/build-check.js && node scripts/generate-api-client.js",
+    "test": "node scripts/scoring-test.js && node scripts/smoke-test.js && node scripts/api-validation-test.js && node scripts/auth-recovery-test.js && node scripts/mailer-delivery-test.js && node scripts/openapi-contract-test.js && node scripts/api-client-generation-test.js && npm run test:e2e",
+    "test:e2e": "playwright test",
+    "lint": "node scripts/lint-check.js",
+    "db:migrate": "node scripts/db-migrate.js",
+    "db:rollback": "node scripts/db-rollback.js",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "security:sast": "node scripts/security-sast-check.js",
+    "security": "npm run security:audit && npm run security:sast"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "redis": "^5.8.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
   }
 }

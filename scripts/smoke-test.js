@@ -55,6 +55,11 @@ async function run() {
     const targetLoginJson = await targetLogin.json();
     assert.equal(targetLogin.status, 200);
 
+    const invalidPred = await post('http://127.0.0.1:4520/api/predictions', {
+      ticker: 'AAP1', direction: 'bull', targetPrice: -1, horizonDate: 'bad-date', confidence: 4
+    }, { authorization: `Bearer ${targetLoginJson.token}` });
+    assert.equal(invalidPred.status, 400);
+
     const pred = await post('http://127.0.0.1:4520/api/predictions', {
       ticker: 'AAPL', direction: 'bull', targetPrice: 250, horizonDate: '2026-12-31', confidence: 0.7
     }, { authorization: `Bearer ${targetLoginJson.token}` });

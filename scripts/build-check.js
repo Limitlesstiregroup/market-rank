@@ -4,8 +4,11 @@ const required = [
   'backend/scoring.js',
   'backend/store.js',
   'web/index.html',
+  'web/api-client.js',
   'worker/daily-score.js',
-  'db/schema.sql'
+  'db/schema.sql',
+  'README.md',
+  '.env.example'
 ];
 for (const file of required) {
   if (!fs.existsSync(require('path').join(__dirname, '..', file))) {
