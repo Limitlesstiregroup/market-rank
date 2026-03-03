@@ -2,6 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const assert = require('assert');
+const crypto = require('crypto');
 
 function clearMailerModule() {
   const p = require.resolve('../backend/mailer');
@@ -21,11 +22,16 @@ async function run() {
     process.env.EMAIL_WEBHOOK_TIMEOUT_MS = '2000';
     process.env.EMAIL_WEBHOOK_RETRIES = '2';
     process.env.EMAIL_WEBHOOK_RETRY_BASE_MS = '1';
+    process.env.EMAIL_WEBHOOK_AUTH_HEADER = 'x-provider-token';
+    process.env.EMAIL_WEBHOOK_AUTH_TOKEN = 'provider-secret';
+    process.env.EMAIL_WEBHOOK_SIGNING_SECRET = 'signing-secret';
     delete process.env.EMAIL_DEADLETTER_FILE;
 
     let attempts = 0;
-    global.fetch = async () => {
+    let lastRequest = null;
+    global.fetch = async (url, options) => {
       attempts += 1;
+      lastRequest = { url, options };
       if (attempts < 3) throw new Error('temporary webhook outage');
       return { ok: true, status: 200, statusText: 'ok', text: async () => '' };
     };
@@ -41,6 +47,15 @@ async function run() {
     });
     assert.equal(retryResult.mode, 'webhook');
     assert.equal(attempts, 3);
+    assert.ok(lastRequest);
+    assert.equal(lastRequest.url, 'https://example.test/webhook');
+    assert.equal(lastRequest.options.headers['x-provider-token'], 'provider-secret');
+    const timestamp = lastRequest.options.headers['x-marketrank-timestamp'];
+    const signature = lastRequest.options.headers['x-marketrank-signature'];
+    assert.ok(timestamp);
+    assert.ok(signature);
+    const expectedSignature = `sha256=${crypto.createHmac('sha256', 'signing-secret').update(`${timestamp}.${lastRequest.options.body}`).digest('hex')}`;
+    assert.equal(signature, expectedSignature);
 
     process.env.EMAIL_DEADLETTER_FILE = deadletter;
     attempts = 0;

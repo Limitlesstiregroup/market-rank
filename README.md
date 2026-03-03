@@ -62,6 +62,8 @@ Key values:
 - `EMAIL_DELIVERY_MODE` - `stdout` (default), `outbox`, or `webhook`
 - `EMAIL_OUTBOX_FILE` - JSONL output path when using `outbox` mode
 - `EMAIL_WEBHOOK_URL` - provider bridge endpoint when using `webhook` mode
+- `EMAIL_WEBHOOK_AUTH_HEADER` / `EMAIL_WEBHOOK_AUTH_TOKEN` - optional static auth header pair for provider bridges
+- `EMAIL_WEBHOOK_SIGNING_SECRET` - optional HMAC secret for webhook payload signing (`x-marketrank-timestamp`, `x-marketrank-signature`)
 - `EMAIL_WEBHOOK_TIMEOUT_MS` - webhook request timeout per attempt (default `5000`)
 - `EMAIL_WEBHOOK_RETRIES` - retry attempts after first failure (default `2`)
 - `EMAIL_WEBHOOK_RETRY_BASE_MS` - exponential backoff base delay in ms (default `500`)
@@ -90,6 +92,7 @@ Verification/reset requests now route through the delivery adapter (`EMAIL_DELIV
 
 - For local QA, keep `EMAIL_TOKEN_ECHO=true` (default outside production).
 - For production, set `EMAIL_TOKEN_ECHO=false` and use `EMAIL_DELIVERY_MODE=webhook` with `EMAIL_WEBHOOK_URL`.
+- If your provider bridge supports request validation, set `EMAIL_WEBHOOK_SIGNING_SECRET` (and optionally `EMAIL_WEBHOOK_AUTH_HEADER` + `EMAIL_WEBHOOK_AUTH_TOKEN`).
 
 ## Test coverage
 

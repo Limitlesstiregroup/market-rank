@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const DELIVERY_MODE = String(process.env.EMAIL_DELIVERY_MODE || 'stdout').trim().toLowerCase();
 const WEBHOOK_URL = String(process.env.EMAIL_WEBHOOK_URL || '').trim();
@@ -8,6 +9,9 @@ const DEADLETTER_FILE = String(process.env.EMAIL_DEADLETTER_FILE || '').trim();
 const WEBHOOK_TIMEOUT_MS = Math.max(1000, Number(process.env.EMAIL_WEBHOOK_TIMEOUT_MS || 5000));
 const WEBHOOK_RETRIES = Math.max(0, Number(process.env.EMAIL_WEBHOOK_RETRIES || 2));
 const WEBHOOK_RETRY_BASE_MS = Math.max(100, Number(process.env.EMAIL_WEBHOOK_RETRY_BASE_MS || 500));
+const WEBHOOK_AUTH_HEADER = String(process.env.EMAIL_WEBHOOK_AUTH_HEADER || '').trim();
+const WEBHOOK_AUTH_TOKEN = String(process.env.EMAIL_WEBHOOK_AUTH_TOKEN || '').trim();
+const WEBHOOK_SIGNING_SECRET = String(process.env.EMAIL_WEBHOOK_SIGNING_SECRET || '').trim();
 const TOKEN_ECHO = String(process.env.EMAIL_TOKEN_ECHO || (String(process.env.NODE_ENV || '').toLowerCase() === 'production' ? 'false' : 'true')).trim().toLowerCase() === 'true';
 
 function subjectFor(type) {
@@ -34,6 +38,20 @@ function appendJsonLine(filePath, payload) {
 }
 
 async function sendViaWebhook(payload) {
+  const body = JSON.stringify(payload);
+  const headers = { 'content-type': 'application/json' };
+
+  if (WEBHOOK_AUTH_HEADER && WEBHOOK_AUTH_TOKEN) {
+    headers[WEBHOOK_AUTH_HEADER] = WEBHOOK_AUTH_TOKEN;
+  }
+
+  if (WEBHOOK_SIGNING_SECRET) {
+    const timestamp = String(Date.now());
+    const signature = crypto.createHmac('sha256', WEBHOOK_SIGNING_SECRET).update(`${timestamp}.${body}`).digest('hex');
+    headers['x-marketrank-timestamp'] = timestamp;
+    headers['x-marketrank-signature'] = `sha256=${signature}`;
+  }
+
   let lastError = null;
   for (let attempt = 0; attempt <= WEBHOOK_RETRIES; attempt += 1) {
     const controller = new AbortController();
@@ -41,8 +59,8 @@ async function sendViaWebhook(payload) {
     try {
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers,
+        body,
         signal: controller.signal
       });
       if (!response.ok) {
