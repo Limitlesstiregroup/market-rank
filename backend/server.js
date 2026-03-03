@@ -337,7 +337,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(fs.readFileSync(WEB_FILE, 'utf8'));
     }
 
-    const store = loadStore();
+    const store = await loadStore();
 
   if (req.method === 'GET' && u.pathname === '/api/health') {
     return json(res, 200, { ok: true, service: 'market-rank-api', users: store.users.length, predictions: store.predictions.length });
@@ -359,7 +359,7 @@ const server = http.createServer(async (req, res) => {
     const ipHash = hash(getClientIp(req));
     const registerRl = takeRateLimit(store, `register:${ipHash}`, 8, 60 * 60 * 1000);
     if (!registerRl.allowed) {
-      saveStore(store);
+      await saveStore(store);
       return json(res, 429, { error: 'rate limit exceeded', retryAfterSec: registerRl.retryAfterSec });
     }
 
@@ -386,7 +386,7 @@ const server = http.createServer(async (req, res) => {
     const sybil = computeSybilSignals(user.id, store);
     user.sybilRisk = sybil.score;
     user.sybilSignals = sybil.reasons;
-    saveStore(store);
+    await saveStore(store);
     return json(res, 201, {
       user: {
         id: user.id,
@@ -402,7 +402,7 @@ const server = http.createServer(async (req, res) => {
     const ipHash = hash(getClientIp(req));
     const loginRl = takeRateLimit(store, `login:${ipHash}`, 20, 15 * 60 * 1000);
     if (!loginRl.allowed) {
-      saveStore(store);
+      await saveStore(store);
       return json(res, 429, { error: 'rate limit exceeded', retryAfterSec: loginRl.retryAfterSec });
     }
 
@@ -422,7 +422,7 @@ const server = http.createServer(async (req, res) => {
     user.sybilSignals = sybil.reasons;
 
     const activeSession = issueSession(store, user.id);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, {
       token: activeSession.token,
       session: { expiresAt: activeSession.expiresAt },
@@ -445,7 +445,7 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 200, { ok: true });
 
     const verify = createOneTimeToken(store, 'emailVerificationTokens', user.id, 'emv', 60 * 60 * 1000);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { ok: true, verificationToken: verify.token, expiresAt: verify.expiresAt });
   }
 
@@ -461,7 +461,7 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 404, { error: 'user not found' });
 
     user.emailVerified = true;
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { ok: true, user: { id: user.id, email: user.email, emailVerified: true } });
   }
 
@@ -473,7 +473,7 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 200, { ok: true });
 
     const reset = createOneTimeToken(store, 'passwordResetTokens', user.id, 'pwd', 30 * 60 * 1000);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { ok: true, resetToken: reset.token, expiresAt: reset.expiresAt });
   }
 
@@ -498,7 +498,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
 
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { ok: true });
   }
 
@@ -516,7 +516,7 @@ const server = http.createServer(async (req, res) => {
       store.revokedTokens = store.revokedTokens.slice(-1000);
     }
 
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { ok: true });
   }
 
@@ -532,13 +532,13 @@ const server = http.createServer(async (req, res) => {
     const effectiveLimit = user.sybilRisk >= 40 ? Math.max(5, Math.floor(baseLimit / 3)) : baseLimit;
     const predictionRl = takeRateLimit(store, `pred:user:${user.id}`, effectiveLimit, 60 * 60 * 1000);
     if (!predictionRl.allowed) {
-      saveStore(store);
+      await saveStore(store);
       return json(res, 429, { error: 'prediction rate limit exceeded', retryAfterSec: predictionRl.retryAfterSec });
     }
 
     const ipRl = takeRateLimit(store, `pred:ip:${ipHash}`, 100, 60 * 60 * 1000);
     if (!ipRl.allowed) {
-      saveStore(store);
+      await saveStore(store);
       return json(res, 429, { error: 'ip rate limit exceeded', retryAfterSec: ipRl.retryAfterSec });
     }
 
@@ -571,7 +571,7 @@ const server = http.createServer(async (req, res) => {
     user.sybilRisk = sybil.score;
     user.sybilSignals = sybil.reasons;
     user.trustScore = computeUserScore(user.id, store);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 201, { prediction: pred, trustScore: user.trustScore, sybilRisk: user.sybilRisk });
   }
 
@@ -607,7 +607,7 @@ const server = http.createServer(async (req, res) => {
     const targetUser = store.users.find((uUser) => uUser.id === prediction.userId);
     if (targetUser) targetUser.trustScore = computeUserScore(targetUser.id, store);
 
-    saveStore(store);
+    await saveStore(store);
     return json(res, 201, { flag: event, prediction: { id: prediction.id, flagged: prediction.flagged, flagCount: prediction.flagCount } });
   }
 
@@ -637,7 +637,7 @@ const server = http.createServer(async (req, res) => {
 
     store.moderation.push(event);
     targetUser.trustScore = computeUserScore(targetUser.id, store);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 201, { ban: event });
   }
 
@@ -664,7 +664,7 @@ const server = http.createServer(async (req, res) => {
       createdAt: new Date().toISOString()
     };
     store.appeals.push(appeal);
-    saveStore(store);
+    await saveStore(store);
     return json(res, 201, { appeal });
   }
 
@@ -728,7 +728,7 @@ const server = http.createServer(async (req, res) => {
       .sort((a, b) => b.trustScore - a.trustScore)
       .slice(0, 100);
 
-    saveStore(store);
+    await saveStore(store);
     return json(res, 200, { leaderboard, updatedAt: new Date().toISOString(), schedule: 'daily at 8:00 PM EST' });
   }
 

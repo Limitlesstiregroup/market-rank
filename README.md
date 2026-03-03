@@ -26,6 +26,9 @@ MarketRank is an ad-free stock prediction platform with user credibility scoring
 ```bash
 npm install
 cp .env.example .env
+# Optional for Postgres mode:
+#   set STORE_BACKEND=postgres in .env
+#   run npm run db:migrate
 npm run build
 npm run lint
 npm test
@@ -41,12 +44,15 @@ See `.env.example`.
 Key values:
 
 - `PORT` - API/web port
-- `STORE_FILE` - local JSON datastore path (MVP mode)
+- `STORE_BACKEND` - `file` (default) or `postgres`
+- `STORE_FILE` - local JSON datastore path (when `STORE_BACKEND=file`)
 - `MODERATOR_KEY` - required for `/api/moderation/ban`
 - `ALLOWED_ORIGIN` - CORS allowlist origin
 - `MAX_BODY_BYTES` - max request body size in bytes
 - `NODE_ENV` - `development` / `test` / `production`
 - `SESSION_TTL_HOURS` - auth token lifetime before expiry (default 168 hours)
+- `DATABASE_URL` - Postgres connection string (required when `STORE_BACKEND=postgres`)
+- `PGSSL` - set `require` when your Postgres endpoint enforces TLS
 - `JWT_SECRET` - HMAC secret for signed auth tokens (required in production)
 - `JWT_ISSUER` - JWT issuer claim (default `market-rank`)
 - `JWT_AUDIENCE` - JWT audience claim (default `market-rank-api`)
@@ -82,9 +88,9 @@ Current MVP returns verification/reset tokens directly in API responses so local
 
 ## Production-readiness TODO (next step)
 
-1. Replace JSON store with Postgres + migrations
-2. Harden session persistence to Redis/JWT with rotation (file-backed TTL + revoke-list sessions are now implemented)
-3. Wire real email delivery for verification/reset flows (remove token echo in API responses)
+1. Wire real email delivery for verification/reset flows (remove token echo in API responses)
+2. Add dedicated session cache (Redis) for horizontal scale and lower DB churn
+3. Add migration history tracking + rollback scripts (current migration runner is single-file)
 
 ## Security notes
 

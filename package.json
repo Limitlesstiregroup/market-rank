@@ -8,9 +8,13 @@
     "test": "node scripts/scoring-test.js && node scripts/smoke-test.js && node scripts/api-validation-test.js && node scripts/auth-recovery-test.js && node scripts/openapi-contract-test.js && node scripts/api-client-generation-test.js && npm run test:e2e",
     "test:e2e": "playwright test",
     "lint": "node scripts/lint-check.js",
+    "db:migrate": "node scripts/db-migrate.js",
     "security:audit": "npm audit --omit=dev --audit-level=high",
     "security:sast": "node scripts/security-sast-check.js",
     "security": "npm run security:audit && npm run security:sast"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"

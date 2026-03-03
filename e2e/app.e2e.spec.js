@@ -1,8 +1,11 @@
 const { test, expect } = require('@playwright/test');
 const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 let server;
+let tempStoreFile;
 
 async function waitForHealthy(baseURL, timeoutMs = 15_000) {
   const started = Date.now();
@@ -20,13 +23,17 @@ async function waitForHealthy(baseURL, timeoutMs = 15_000) {
 
 test.beforeAll(async ({ baseURL }) => {
   const repoRoot = path.join(__dirname, '..');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'market-rank-e2e-'));
+  tempStoreFile = path.join(tempDir, 'store.json');
   server = spawn(process.execPath, ['backend/server.js'], {
     cwd: repoRoot,
     stdio: 'ignore',
     env: {
       ...process.env,
       PORT: '4510',
-      ALLOWED_ORIGIN: '*'
+      ALLOWED_ORIGIN: '*',
+      STORE_BACKEND: 'file',
+      STORE_FILE: tempStoreFile
     }
   });
   await waitForHealthy(baseURL);
@@ -35,6 +42,9 @@ test.beforeAll(async ({ baseURL }) => {
 test.afterAll(async () => {
   if (server && !server.killed) {
     server.kill('SIGTERM');
+  }
+  if (tempStoreFile) {
+    fs.rmSync(path.dirname(tempStoreFile), { recursive: true, force: true });
   }
 });
 
