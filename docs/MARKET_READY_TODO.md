@@ -29,4 +29,4 @@
 - [x] Add structured logging + metrics + alerting (JSONL request logs, `/api/metrics`, 5xx burst warning)
 - [x] Add OpenAPI spec and contract tests
 - [x] Add admin moderation dashboard UI
-- [ ] Add E2E browser tests (Playwright/Cypress)
+- [x] Add E2E tests with Playwright (register/login/post-prediction/leaderboard flow)

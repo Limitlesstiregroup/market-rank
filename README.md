@@ -75,15 +75,13 @@ Current MVP returns verification/reset tokens directly in API responses so local
 - `scripts/api-validation-test.js` - input validation + payload limits
 - `scripts/auth-recovery-test.js` - email verify + password reset flow and session invalidation checks
 - `scripts/openapi-contract-test.js` - OpenAPI route/response contract validation against live server
+- `e2e/app.e2e.spec.js` - Playwright end-to-end flow (register/login/post prediction/leaderboard)
 
 ## Production-readiness TODO (next step)
 
 1. Replace JSON store with Postgres + migrations
 2. Harden session persistence to Redis/JWT with rotation (file-backed TTL + revoke-list sessions are now implemented)
-3. Add observability (structured logs, metrics, tracing)
-4. ✅ Add CI security checks (dependency audit + lightweight SAST)
-5. ✅ Add typed API client generated from OpenAPI contract (`web/api-client.js`, generated via `node scripts/generate-api-client.js`)
-6. Add full moderation dashboard
+3. Wire real email delivery for verification/reset flows (remove token echo in API responses)
 
 ## Security notes
 
