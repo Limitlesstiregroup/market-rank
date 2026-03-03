@@ -10,6 +10,9 @@ const port = Number(process.env.PORT || 4510);
 const WEB_FILE = path.join(__dirname, '..', 'web', 'index.html');
 const SESSION_TTL_HOURS = Math.max(1, Number(process.env.SESSION_TTL_HOURS || 24 * 7));
 const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-jwt-secret-change-me';
+const JWT_ISSUER = process.env.JWT_ISSUER || 'market-rank';
+const JWT_AUDIENCE = process.env.JWT_AUDIENCE || 'market-rank-api';
 const MODERATOR_KEY = process.env.MODERATOR_KEY || 'dev-moderator-key';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
@@ -19,6 +22,44 @@ const ALERT_5XX_THRESHOLD = Math.max(1, Number(process.env.ALERT_5XX_THRESHOLD |
 
 function id(prefix) { return `${prefix}_${Math.random().toString(36).slice(2, 10)}`; }
 function hash(v) { return crypto.createHash('sha256').update(String(v)).digest('hex'); }
+
+function base64urlEncode(input) {
+  return Buffer.from(input).toString('base64url');
+}
+
+function base64urlDecode(input) {
+  return Buffer.from(input, 'base64url').toString('utf8');
+}
+
+function signToken(payload) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = base64urlEncode(JSON.stringify(header));
+  const encodedPayload = base64urlEncode(JSON.stringify(payload));
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(signingInput).digest('base64url');
+  return `${signingInput}.${signature}`;
+}
+
+function verifyToken(token) {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [encodedHeader, encodedPayload, signature] = parts;
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const expected = crypto.createHmac('sha256', JWT_SECRET).update(signingInput).digest('base64url');
+  const safeExpected = Buffer.from(expected);
+  const safeActual = Buffer.from(signature || '');
+  if (safeExpected.length !== safeActual.length || !crypto.timingSafeEqual(safeExpected, safeActual)) return null;
+
+  try {
+    const payload = JSON.parse(base64urlDecode(encodedPayload));
+    if (!payload || payload.iss !== JWT_ISSUER || payload.aud !== JWT_AUDIENCE) return null;
+    if (!Number.isFinite(Number(payload.exp)) || Number(payload.exp) * 1000 <= Date.now()) return null;
+    if (!payload.sub || !payload.jti || !payload.sid) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 const metrics = {
   startedAt: new Date().toISOString(),
@@ -145,10 +186,21 @@ function purgeExpiredSessions(store, now = Date.now()) {
 }
 
 function issueSession(store, userId, now = Date.now()) {
-  const token = id('tok');
+  const sid = id('sid');
+  const jti = id('jti');
   const expiresAt = new Date(now + SESSION_TTL_MS).toISOString();
-  store.sessions.push({ token, userId, createdAt: new Date(now).toISOString(), expiresAt });
-  return { token, expiresAt };
+  const payload = {
+    sub: userId,
+    sid,
+    jti,
+    iat: Math.floor(now / 1000),
+    exp: Math.floor((now + SESSION_TTL_MS) / 1000),
+    iss: JWT_ISSUER,
+    aud: JWT_AUDIENCE
+  };
+  const token = signToken(payload);
+  store.sessions.push({ sid, jti, userId, createdAt: new Date(now).toISOString(), expiresAt });
+  return { token, expiresAt, sid, jti };
 }
 
 function createOneTimeToken(store, collectionKey, userId, type, ttlMs) {
@@ -177,18 +229,32 @@ function resolveSessionFromReq(req, store, now = Date.now()) {
   const auth = String(req.headers.authorization || '');
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return null;
-  if (store.revokedTokens.includes(token)) return null;
 
+  const payload = verifyToken(token);
+  if (payload) {
+    if (store.revokedTokens.includes(payload.jti) || store.revokedTokens.includes(token)) return null;
+    const session = store.sessions.find((entry) => entry.sid === payload.sid && entry.jti === payload.jti && entry.userId === payload.sub);
+    if (!session) return null;
+
+    const expiresAtMs = Date.parse(String(session.expiresAt || ''));
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) {
+      store.sessions = store.sessions.filter((entry) => !(entry.sid === payload.sid && entry.jti === payload.jti));
+      return null;
+    }
+
+    return { token, session, jti: payload.jti, sid: payload.sid };
+  }
+
+  // Backward compatibility for legacy random-token sessions.
+  if (store.revokedTokens.includes(token)) return null;
   const session = store.sessions.find((entry) => entry.token === token);
   if (!session) return null;
-
   const expiresAtMs = Date.parse(String(session.expiresAt || ''));
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) {
     store.sessions = store.sessions.filter((entry) => entry.token !== token);
     return null;
   }
-
-  return { token, session };
+  return { token, session, jti: session.jti || null, sid: session.sid || null };
 }
 
 function userFromReq(req, store) {
@@ -424,10 +490,11 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 404, { error: 'user not found' });
 
     user.passwordHash = hash(newPassword);
-    const revoked = store.sessions.filter((entry) => entry.userId === user.id).map((entry) => entry.token);
+    const revoked = store.sessions.filter((entry) => entry.userId === user.id);
     store.sessions = store.sessions.filter((entry) => entry.userId !== user.id);
-    for (const tokenValue of revoked) {
-      if (!store.revokedTokens.includes(tokenValue)) store.revokedTokens.push(tokenValue);
+    for (const sessionEntry of revoked) {
+      if (sessionEntry.jti && !store.revokedTokens.includes(sessionEntry.jti)) store.revokedTokens.push(sessionEntry.jti);
+      if (sessionEntry.token && !store.revokedTokens.includes(sessionEntry.token)) store.revokedTokens.push(sessionEntry.token);
     }
     if (store.revokedTokens.length > 1000) store.revokedTokens = store.revokedTokens.slice(-1000);
 
@@ -439,12 +506,14 @@ const server = http.createServer(async (req, res) => {
     const resolved = resolveSessionFromReq(req, store);
     if (!resolved) return json(res, 401, { error: 'auth required' });
 
-    store.sessions = store.sessions.filter((entry) => entry.token !== resolved.token);
-    if (!store.revokedTokens.includes(resolved.token)) {
-      store.revokedTokens.push(resolved.token);
-      if (store.revokedTokens.length > 1000) {
-        store.revokedTokens = store.revokedTokens.slice(-1000);
-      }
+    store.sessions = store.sessions.filter((entry) => {
+      if (resolved.sid && resolved.jti) return !(entry.sid === resolved.sid && entry.jti === resolved.jti);
+      return entry.token !== resolved.token;
+    });
+    if (!store.revokedTokens.includes(resolved.token)) store.revokedTokens.push(resolved.token);
+    if (resolved.jti && !store.revokedTokens.includes(resolved.jti)) store.revokedTokens.push(resolved.jti);
+    if (store.revokedTokens.length > 1000) {
+      store.revokedTokens = store.revokedTokens.slice(-1000);
     }
 
     saveStore(store);

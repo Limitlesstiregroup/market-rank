@@ -47,6 +47,9 @@ Key values:
 - `MAX_BODY_BYTES` - max request body size in bytes
 - `NODE_ENV` - `development` / `test` / `production`
 - `SESSION_TTL_HOURS` - auth token lifetime before expiry (default 168 hours)
+- `JWT_SECRET` - HMAC secret for signed auth tokens (required in production)
+- `JWT_ISSUER` - JWT issuer claim (default `market-rank`)
+- `JWT_AUDIENCE` - JWT audience claim (default `market-rank-api`)
 
 ## API endpoints
 
