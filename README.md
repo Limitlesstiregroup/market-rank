@@ -82,7 +82,7 @@ Current MVP returns verification/reset tokens directly in API responses so local
 2. Harden session persistence to Redis/JWT with rotation (file-backed TTL + revoke-list sessions are now implemented)
 3. Add observability (structured logs, metrics, tracing)
 4. ✅ Add CI security checks (dependency audit + lightweight SAST)
-5. Add typed API client generated from OpenAPI contract
+5. ✅ Add typed API client generated from OpenAPI contract (`web/api-client.js`, generated via `node scripts/generate-api-client.js`)
 6. Add full moderation dashboard
 
 ## Security notes
