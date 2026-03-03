@@ -7,8 +7,9 @@ const { loadStore, saveStore } = require('./store');
 const { computeUserScore, computeSybilSignals } = require('./scoring');
 
 const port = Number(process.env.PORT || 4510);
-const sessions = new Map();
 const WEB_FILE = path.join(__dirname, '..', 'web', 'index.html');
+const SESSION_TTL_HOURS = Math.max(1, Number(process.env.SESSION_TTL_HOURS || 24 * 7));
+const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
 const MODERATOR_KEY = process.env.MODERATOR_KEY || 'dev-moderator-key';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 16 * 1024);
@@ -136,12 +137,43 @@ function getDeviceFingerprint(req) {
   return raw ? hash(raw) : null;
 }
 
-function userFromReq(req, store) {
+function purgeExpiredSessions(store, now = Date.now()) {
+  store.sessions = store.sessions.filter((session) => {
+    const expiresAtMs = Date.parse(String(session.expiresAt || ''));
+    return Number.isFinite(expiresAtMs) && expiresAtMs > now;
+  });
+}
+
+function issueSession(store, userId, now = Date.now()) {
+  const token = id('tok');
+  const expiresAt = new Date(now + SESSION_TTL_MS).toISOString();
+  store.sessions.push({ token, userId, createdAt: new Date(now).toISOString(), expiresAt });
+  return { token, expiresAt };
+}
+
+function resolveSessionFromReq(req, store, now = Date.now()) {
+  purgeExpiredSessions(store, now);
   const auth = String(req.headers.authorization || '');
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token || !sessions.has(token)) return null;
-  const userId = sessions.get(token);
-  return store.users.find((u) => u.id === userId) || null;
+  if (!token) return null;
+  if (store.revokedTokens.includes(token)) return null;
+
+  const session = store.sessions.find((entry) => entry.token === token);
+  if (!session) return null;
+
+  const expiresAtMs = Date.parse(String(session.expiresAt || ''));
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now) {
+    store.sessions = store.sessions.filter((entry) => entry.token !== token);
+    return null;
+  }
+
+  return { token, session };
+}
+
+function userFromReq(req, store) {
+  const resolved = resolveSessionFromReq(req, store);
+  if (!resolved) return null;
+  return store.users.find((u) => u.id === resolved.session.userId) || null;
 }
 
 function requireModerator(req) {
@@ -302,11 +334,11 @@ const server = http.createServer(async (req, res) => {
     user.sybilRisk = sybil.score;
     user.sybilSignals = sybil.reasons;
 
-    const token = id('tok');
-    sessions.set(token, user.id);
+    const activeSession = issueSession(store, user.id);
     saveStore(store);
     return json(res, 200, {
-      token,
+      token: activeSession.token,
+      session: { expiresAt: activeSession.expiresAt },
       user: {
         id: user.id,
         email: user.email,
@@ -318,10 +350,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && u.pathname === '/api/auth/logout') {
-    const auth = String(req.headers.authorization || '');
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-    if (!token || !sessions.has(token)) return json(res, 401, { error: 'auth required' });
-    sessions.delete(token);
+    const resolved = resolveSessionFromReq(req, store);
+    if (!resolved) return json(res, 401, { error: 'auth required' });
+
+    store.sessions = store.sessions.filter((entry) => entry.token !== resolved.token);
+    if (!store.revokedTokens.includes(resolved.token)) {
+      store.revokedTokens.push(resolved.token);
+      if (store.revokedTokens.length > 1000) {
+        store.revokedTokens = store.revokedTokens.slice(-1000);
+      }
+    }
+
+    saveStore(store);
     return json(res, 200, { ok: true });
   }
 

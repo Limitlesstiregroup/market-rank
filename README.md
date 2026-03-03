@@ -46,6 +46,7 @@ Key values:
 - `ALLOWED_ORIGIN` - CORS allowlist origin
 - `MAX_BODY_BYTES` - max request body size in bytes
 - `NODE_ENV` - `development` / `test` / `production`
+- `SESSION_TTL_HOURS` - auth token lifetime before expiry (default 168 hours)
 
 ## API endpoints
 
@@ -69,7 +70,7 @@ Key values:
 ## Production-readiness TODO (next step)
 
 1. Replace JSON store with Postgres + migrations
-2. Add proper session persistence (Redis/JWT + rotation)
+2. Harden session persistence to Redis/JWT with rotation (file-backed TTL + revoke-list sessions are now implemented)
 3. Add observability (structured logs, metrics, tracing)
 4. ✅ Add CI security checks (dependency audit + lightweight SAST)
 5. Add typed API client generated from OpenAPI contract

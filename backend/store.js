@@ -12,6 +12,8 @@ function normalizeStore(store) {
   if (!Array.isArray(normalized.moderation)) normalized.moderation = [];
   if (!Array.isArray(normalized.rateLimits)) normalized.rateLimits = [];
   if (!Array.isArray(normalized.appeals)) normalized.appeals = [];
+  if (!Array.isArray(normalized.sessions)) normalized.sessions = [];
+  if (!Array.isArray(normalized.revokedTokens)) normalized.revokedTokens = [];
   return normalized;
 }
 

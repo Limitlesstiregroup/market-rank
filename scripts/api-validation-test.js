@@ -50,6 +50,7 @@ async function run() {
     });
     assert.equal(login.status, 200);
     const loginJson = await login.json();
+    assert.ok(loginJson.session?.expiresAt);
 
     const badPrediction = await post('http://127.0.0.1:4521/api/predictions', {
       ticker: 'AAPL123', direction: 'up', targetPrice: -1, horizonDate: 'not-date', confidence: 2
